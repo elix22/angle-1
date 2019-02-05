@@ -14,13 +14,13 @@
 #include <algorithm>
 #include <array>
 
-#include "angle_gl.h"
 #include "angle_test_configs.h"
 #include "common/angleutils.h"
 #include "common/vector_utils.h"
 #include "platform/Platform.h"
-#include "shader_utils.h"
-#include "system_utils.h"
+#include "util/shader_utils.h"
+#include "util/system_utils.h"
+#include "util/util_gl.h"
 
 #define ASSERT_GL_TRUE(a) ASSERT_EQ(static_cast<GLboolean>(GL_TRUE), (a))
 #define ASSERT_GL_FALSE(a) ASSERT_EQ(static_cast<GLboolean>(GL_FALSE), (a))
@@ -118,8 +118,6 @@ static constexpr GLColor32F kFloatRed   = {1.0f, 0.0f, 0.0f, 1.0f};
 static constexpr GLColor32F kFloatGreen = {0.0f, 1.0f, 0.0f, 1.0f};
 static constexpr GLColor32F kFloatBlue  = {0.0f, 0.0f, 1.0f, 1.0f};
 
-struct WorkaroundsD3D;
-
 // The input here for pixelPoints are the expected integer window coordinates, we add .5 to every
 // one of them and re-scale the numbers to be between [-1,1]. Using this technique, we can make
 // sure the rasterization stage will end up drawing pixels at the expected locations.
@@ -176,15 +174,16 @@ GLColor32F ReadColor32F(GLint x, GLint y);
 #define EXPECT_PIXEL_COLOR32F_EQ(x, y, angleColor) EXPECT_EQ(angleColor, angle::ReadColor32F(x, y))
 
 #define EXPECT_PIXEL_RECT_EQ(x, y, width, height, color)                                           \
-                                                                                                   \
+    do                                                                                             \
     {                                                                                              \
         std::vector<GLColor> actualColors(width *height);                                          \
         glReadPixels((x), (y), (width), (height), GL_RGBA, GL_UNSIGNED_BYTE, actualColors.data()); \
         std::vector<GLColor> expectedColors(width *height, color);                                 \
         EXPECT_EQ(expectedColors, actualColors);                                                   \
-    }
+    } while (0)
 
 #define EXPECT_PIXEL_NEAR(x, y, r, g, b, a, abs_error)                  \
+    do                                                                  \
     {                                                                   \
         GLubyte pixel[4];                                               \
         glReadPixels((x), (y), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel); \
@@ -193,10 +192,10 @@ GLColor32F ReadColor32F(GLint x, GLint y);
         EXPECT_NEAR((g), pixel[1], abs_error);                          \
         EXPECT_NEAR((b), pixel[2], abs_error);                          \
         EXPECT_NEAR((a), pixel[3], abs_error);                          \
-    }
+    } while (0)
 
 #define EXPECT_PIXEL32F_NEAR(x, y, r, g, b, a, abs_error)       \
-                                                                \
+    do                                                          \
     {                                                           \
         GLfloat pixel[4];                                       \
         glReadPixels((x), (y), 1, 1, GL_RGBA, GL_FLOAT, pixel); \
@@ -205,7 +204,7 @@ GLColor32F ReadColor32F(GLint x, GLint y);
         EXPECT_NEAR((g), pixel[1], abs_error);                  \
         EXPECT_NEAR((b), pixel[2], abs_error);                  \
         EXPECT_NEAR((a), pixel[3], abs_error);                  \
-    }
+    } while (0)
 
 // TODO(jmadill): Figure out how we can use GLColor's nice printing with EXPECT_NEAR.
 #define EXPECT_PIXEL_COLOR_NEAR(x, y, angleColor, abs_error) \
@@ -215,15 +214,15 @@ GLColor32F ReadColor32F(GLint x, GLint y);
     EXPECT_PIXEL32F_NEAR(x, y, angleColor.R, angleColor.G, angleColor.B, angleColor.A, abs_error)
 
 #define EXPECT_COLOR_NEAR(expected, actual, abs_error) \
-                                                       \
+    do                                                 \
     {                                                  \
         EXPECT_NEAR(expected.R, actual.R, abs_error);  \
         EXPECT_NEAR(expected.G, actual.G, abs_error);  \
         EXPECT_NEAR(expected.B, actual.B, abs_error);  \
         EXPECT_NEAR(expected.A, actual.A, abs_error);  \
-    }
+    } while (0)
 #define EXPECT_PIXEL32F_NEAR(x, y, r, g, b, a, abs_error)       \
-                                                                \
+    do                                                          \
     {                                                           \
         GLfloat pixel[4];                                       \
         glReadPixels((x), (y), 1, 1, GL_RGBA, GL_FLOAT, pixel); \
@@ -232,14 +231,16 @@ GLColor32F ReadColor32F(GLint x, GLint y);
         EXPECT_NEAR((g), pixel[1], abs_error);                  \
         EXPECT_NEAR((b), pixel[2], abs_error);                  \
         EXPECT_NEAR((a), pixel[3], abs_error);                  \
-    }
+    } while (0)
 
 #define EXPECT_PIXEL_COLOR32F_NEAR(x, y, angleColor, abs_error) \
     EXPECT_PIXEL32F_NEAR(x, y, angleColor.R, angleColor.G, angleColor.B, angleColor.A, abs_error)
 
-class EGLWindow;
-class OSWindow;
 class ANGLETestBase;
+class EGLWindow;
+class GLWindowBase;
+class OSWindow;
+class WGLWindow;
 
 struct TestPlatformContext final : private angle::NonCopyable
 {
@@ -260,6 +261,7 @@ class ANGLETestBase
     static bool eglDisplayExtensionEnabled(EGLDisplay display, const std::string &extName);
 
     virtual void overrideWorkaroundsD3D(angle::WorkaroundsD3D *workaroundsD3D) {}
+    virtual void overrideFeaturesVk(angle::FeaturesVk *workaroundsVulkan) {}
 
   protected:
     void ANGLETestSetUp();
@@ -290,6 +292,8 @@ class ANGLETestBase
 
     static std::array<angle::Vector3, 6> GetQuadVertices();
     static std::array<GLushort, 6> GetQuadIndices();
+    static std::array<angle::Vector3, 4> GetIndexedQuadVertices();
+
     void drawIndexedQuad(GLuint program,
                          const std::string &positionAttribName,
                          GLfloat positionAttribZ);
@@ -320,7 +324,6 @@ class ANGLETestBase
                             bool useVertexBuffer,
                             float layer);
 
-    static GLuint compileShader(GLenum type, const std::string &source);
     static bool extensionEnabled(const std::string &extName);
     static bool extensionRequestable(const std::string &extName);
     static bool ensureExtensionEnabled(const std::string &extName);
@@ -356,6 +359,7 @@ class ANGLETestBase
     int getClientMajorVersion() const;
     int getClientMinorVersion() const;
 
+    GLWindowBase *getGLWindow() const;
     EGLWindow *getEGLWindow() const;
     int getWindowWidth() const;
     int getWindowHeight() const;
@@ -385,8 +389,6 @@ class ANGLETestBase
     };
 
   private:
-    bool destroyEGLContext();
-
     void checkD3D11SDKLayersMessages();
 
     void drawQuad(GLuint program,
@@ -398,6 +400,7 @@ class ANGLETestBase
                   GLuint numInstances);
 
     EGLWindow *mEGLWindow;
+    WGLWindow *mWGLWindow;
     int mWidth;
     int mHeight;
 
@@ -436,6 +439,24 @@ class ANGLETestEnvironment : public testing::Environment
   public:
     void SetUp() override;
     void TearDown() override;
+
+    static angle::Library *GetEGLLibrary();
+    static angle::Library *GetWGLLibrary();
+
+  private:
+    // For loading entry points.
+    static std::unique_ptr<angle::Library> gEGLLibrary;
+    static std::unique_ptr<angle::Library> gWGLLibrary;
+};
+
+// This base fixture loads the EGL entry points.
+class EGLTest : public testing::Test
+{
+  public:
+    EGLTest();
+    ~EGLTest();
+
+    void SetUp() override;
 };
 
 // Driver vendors
@@ -455,29 +476,24 @@ bool IsD3DSM3();
 bool IsDesktopOpenGL();
 bool IsOpenGLES();
 bool IsOpenGL();
-bool IsOzone();
 bool IsNULL();
-
-// Operating systems
-bool IsAndroid();
-bool IsLinux();
-bool IsOSX();
-bool IsWindows();
 bool IsVulkan();
 
 // Debug/Release
 bool IsDebug();
 bool IsRelease();
 
+bool IsDisplayExtensionEnabled(EGLDisplay display, const std::string &extName);
+
 // Note: git cl format messes up this formatting.
-#define ANGLE_SKIP_TEST_IF(COND)                              \
-                                                              \
-    if (COND)                                                 \
-                                                              \
-    {                                                         \
-        std::cout << "Test skipped: " #COND "." << std::endl; \
-        return;                                               \
-    }                                                         \
-    ANGLE_EMPTY_STATEMENT
+#define ANGLE_SKIP_TEST_IF(COND)                                  \
+    do                                                            \
+    {                                                             \
+        if (COND)                                                 \
+        {                                                         \
+            std::cout << "Test skipped: " #COND "." << std::endl; \
+            return;                                               \
+        }                                                         \
+    } while (0)
 
 #endif  // ANGLE_TESTS_ANGLE_TEST_H_

@@ -8,6 +8,8 @@
 //
 
 #include "test_utils/ANGLETest.h"
+#include "test_utils/gl_raii.h"
+#include "util/EGLWindow.h"
 
 namespace angle
 {
@@ -42,7 +44,7 @@ class ImageTest : public ANGLETest
     {
         ANGLETest::SetUp();
 
-        const std::string vsSource =
+        constexpr char kVS[] =
             "precision highp float;\n"
             "attribute vec4 position;\n"
             "varying vec2 texcoord;\n"
@@ -53,7 +55,7 @@ class ImageTest : public ANGLETest
             "    texcoord = (position.xy * 0.5) + 0.5;\n"
             "    texcoord.y = 1.0 - texcoord.y;\n"
             "}\n";
-        const std::string vsESSL3Source =
+        constexpr char kVSESSL3[] =
             "#version 300 es\n"
             "precision highp float;\n"
             "in vec4 position;\n"
@@ -66,7 +68,7 @@ class ImageTest : public ANGLETest
             "    texcoord.y = 1.0 - texcoord.y;\n"
             "}\n";
 
-        const std::string textureFSSource =
+        constexpr char kTextureFS[] =
             "precision highp float;\n"
             "uniform sampler2D tex;\n"
             "varying vec2 texcoord;\n"
@@ -75,7 +77,7 @@ class ImageTest : public ANGLETest
             "{\n"
             "    gl_FragColor = texture2D(tex, texcoord);\n"
             "}\n";
-        const std::string textureExternalFSSource =
+        constexpr char kTextureExternalFS[] =
             "#extension GL_OES_EGL_image_external : require\n"
             "precision highp float;\n"
             "uniform samplerExternalOES tex;\n"
@@ -85,7 +87,7 @@ class ImageTest : public ANGLETest
             "{\n"
             "    gl_FragColor = texture2D(tex, texcoord);\n"
             "}\n";
-        const std::string textureExternalESSL3FSSource =
+        constexpr char kTextureExternalESSL3FS[] =
             "#version 300 es\n"
             "#extension GL_OES_EGL_image_external_essl3 : require\n"
             "precision highp float;\n"
@@ -98,7 +100,7 @@ class ImageTest : public ANGLETest
             "    color = texture(tex, texcoord);\n"
             "}\n";
 
-        mTextureProgram = CompileProgram(vsSource, textureFSSource);
+        mTextureProgram = CompileProgram(kVS, kTextureFS);
         if (mTextureProgram == 0)
         {
             FAIL() << "shader compilation failed.";
@@ -108,7 +110,7 @@ class ImageTest : public ANGLETest
 
         if (extensionEnabled("GL_OES_EGL_image_external"))
         {
-            mTextureExternalProgram = CompileProgram(vsSource, textureExternalFSSource);
+            mTextureExternalProgram = CompileProgram(kVS, kTextureExternalFS);
             ASSERT_NE(0u, mTextureExternalProgram) << "shader compilation failed.";
 
             mTextureExternalUniformLocation = glGetUniformLocation(mTextureExternalProgram, "tex");
@@ -116,8 +118,7 @@ class ImageTest : public ANGLETest
 
         if (extensionEnabled("GL_OES_EGL_image_external_essl3"))
         {
-            mTextureExternalESSL3Program =
-                CompileProgram(vsESSL3Source, textureExternalESSL3FSSource);
+            mTextureExternalESSL3Program = CompileProgram(kVSESSL3, kTextureExternalESSL3FS);
             ASSERT_NE(0u, mTextureExternalESSL3Program) << "shader compilation failed.";
 
             mTextureExternalESSL3UniformLocation =
@@ -167,7 +168,9 @@ class ImageTest : public ANGLETest
         EGLWindow *window = getEGLWindow();
 
         EGLint attribs[] = {
-            EGL_IMAGE_PRESERVED, EGL_TRUE, EGL_NONE,
+            EGL_IMAGE_PRESERVED,
+            EGL_TRUE,
+            EGL_NONE,
         };
 
         EGLImageKHR image =
@@ -212,7 +215,9 @@ class ImageTest : public ANGLETest
         EGLWindow *window = getEGLWindow();
 
         EGLint attribs[] = {
-            EGL_IMAGE_PRESERVED, EGL_TRUE, EGL_NONE,
+            EGL_IMAGE_PRESERVED,
+            EGL_TRUE,
+            EGL_NONE,
         };
 
         EGLImageKHR image =
@@ -301,7 +306,9 @@ class ImageTest : public ANGLETest
         EGLWindow *window = getEGLWindow();
 
         EGLint attribs[] = {
-            EGL_IMAGE_PRESERVED, EGL_TRUE, EGL_NONE,
+            EGL_IMAGE_PRESERVED,
+            EGL_TRUE,
+            EGL_NONE,
         };
 
         EGLImageKHR image =
@@ -470,8 +477,7 @@ class ImageTest : public ANGLETest
 };
 
 class ImageTestES3 : public ImageTest
-{
-};
+{};
 
 // Tests that the extension is exposed on the platforms we think it should be. Please modify this as
 // you change extension availability.
@@ -565,7 +571,9 @@ TEST_P(ImageTest, ValidationImageBase)
     // If an attribute specified in <attrib_list> is not one of the attributes listed in Table bbb,
     // the error EGL_BAD_PARAMETER is generated.
     EGLint badAttributes[] = {
-        static_cast<EGLint>(0xDEADBEEF), 0, EGL_NONE,
+        static_cast<EGLint>(0xDEADBEEF),
+        0,
+        EGL_NONE,
     };
 
     image = eglCreateImageKHR(display, context, EGL_GL_TEXTURE_2D_KHR, texture2D, badAttributes);
@@ -686,7 +694,9 @@ TEST_P(ImageTest, ValidationGLImage)
         glTexImage2D(GL_TEXTURE_2D, 1, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 
         EGLint level0Attribute[] = {
-            EGL_GL_TEXTURE_LEVEL_KHR, 0, EGL_NONE,
+            EGL_GL_TEXTURE_LEVEL_KHR,
+            0,
+            EGL_NONE,
         };
         image = eglCreateImageKHR(display, context, EGL_GL_TEXTURE_2D_KHR,
                                   reinterpretHelper<EGLClientBuffer>(incompleteTexture),
@@ -716,7 +726,9 @@ TEST_P(ImageTest, ValidationGLImage)
         // EGL_GL_TEXTURE_LEVEL_KHR is not a valid mipmap level for the specified GL texture object
         // <buffer>, the error EGL_BAD_MATCH is generated.
         EGLint level2Attribute[] = {
-            EGL_GL_TEXTURE_LEVEL_KHR, 2, EGL_NONE,
+            EGL_GL_TEXTURE_LEVEL_KHR,
+            2,
+            EGL_NONE,
         };
         image = eglCreateImageKHR(display, context, EGL_GL_TEXTURE_2D_KHR,
                                   reinterpretHelper<EGLClientBuffer>(incompleteTexture),
@@ -760,7 +772,9 @@ TEST_P(ImageTest, ValidationGLImage)
                      nullptr);
 
         EGLint level0Attribute[] = {
-            EGL_GL_TEXTURE_LEVEL_KHR, 0, EGL_NONE,
+            EGL_GL_TEXTURE_LEVEL_KHR,
+            0,
+            EGL_NONE,
         };
         image = eglCreateImageKHR(display, context, EGL_GL_TEXTURE_CUBE_MAP_POSITIVE_X_KHR,
                                   reinterpretHelper<EGLClientBuffer>(incompleteTextureCube),
@@ -799,7 +813,9 @@ TEST_P(ImageTest, ValidationGLImage)
         glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA, 2, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 
         EGLint zOffset3Parameter[] = {
-            EGL_GL_TEXTURE_ZOFFSET_KHR, 3, EGL_NONE,
+            EGL_GL_TEXTURE_ZOFFSET_KHR,
+            3,
+            EGL_NONE,
         };
         image = eglCreateImageKHR(display, context, EGL_GL_TEXTURE_3D_KHR,
                                   reinterpretHelper<EGLClientBuffer>(texture3D), zOffset3Parameter);
@@ -807,7 +823,9 @@ TEST_P(ImageTest, ValidationGLImage)
         EXPECT_EGL_ERROR(EGL_BAD_PARAMETER);
 
         EGLint zOffsetNegative1Parameter[] = {
-            EGL_GL_TEXTURE_ZOFFSET_KHR, -1, EGL_NONE,
+            EGL_GL_TEXTURE_ZOFFSET_KHR,
+            -1,
+            EGL_NONE,
         };
         image = eglCreateImageKHR(display, context, EGL_GL_TEXTURE_3D_KHR,
                                   reinterpretHelper<EGLClientBuffer>(texture3D),
@@ -826,7 +844,9 @@ TEST_P(ImageTest, ValidationGLImage)
 
             // Verify EGL_GL_TEXTURE_ZOFFSET_KHR is not a valid parameter
             EGLint zOffset0Parameter[] = {
-                EGL_GL_TEXTURE_ZOFFSET_KHR, 0, EGL_NONE,
+                EGL_GL_TEXTURE_ZOFFSET_KHR,
+                0,
+                EGL_NONE,
             };
 
             image =
@@ -953,8 +973,7 @@ TEST_P(ImageTest, ValidationGLEGLImageExternal)
     // In the initial state of a TEXTURE_EXTERNAL_OES texture object, the value assigned to
     // TEXTURE_MIN_FILTER and TEXTURE_MAG_FILTER is LINEAR, and the s and t wrap modes are both set
     // to CLAMP_TO_EDGE
-    auto getTexParam = [](GLenum target, GLenum pname)
-    {
+    auto getTexParam = [](GLenum target, GLenum pname) {
         GLint value = 0;
         glGetTexParameteriv(target, pname, &value);
         EXPECT_GL_NO_ERROR();
@@ -971,7 +990,8 @@ TEST_P(ImageTest, ValidationGLEGLImageExternal)
     // TEXTURE_MIN_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, or GENERATE_MIPMAP will result in an
     // INVALID_ENUM error.
     GLenum validMinFilters[]{
-        GL_NEAREST, GL_LINEAR,
+        GL_NEAREST,
+        GL_LINEAR,
     };
     for (auto minFilter : validMinFilters)
     {
@@ -980,7 +1000,9 @@ TEST_P(ImageTest, ValidationGLEGLImageExternal)
     }
 
     GLenum invalidMinFilters[]{
-        GL_NEAREST_MIPMAP_LINEAR, GL_NEAREST_MIPMAP_NEAREST, GL_LINEAR_MIPMAP_LINEAR,
+        GL_NEAREST_MIPMAP_LINEAR,
+        GL_NEAREST_MIPMAP_NEAREST,
+        GL_LINEAR_MIPMAP_LINEAR,
         GL_LINEAR_MIPMAP_NEAREST,
     };
     for (auto minFilter : invalidMinFilters)
@@ -1001,7 +1023,8 @@ TEST_P(ImageTest, ValidationGLEGLImageExternal)
     }
 
     GLenum invalidWrapModes[]{
-        GL_REPEAT, GL_MIRRORED_REPEAT,
+        GL_REPEAT,
+        GL_MIRRORED_REPEAT,
     };
     for (auto minFilter : invalidWrapModes)
     {
@@ -1098,6 +1121,9 @@ TEST_P(ImageTest, Source2DTargetExternal)
 {
     EGLWindow *window = getEGLWindow();
     ANGLE_SKIP_TEST_IF(!hasOESExt() || !hasBaseExt() || !has2DTextureExt() || !hasExternalExt());
+
+    // Ozone only supports external target for images created with EGL_EXT_image_dma_buf_import
+    ANGLE_SKIP_TEST_IF(IsOzone());
 
     GLubyte data[4] = {255, 0, 255, 255};
 
@@ -1216,6 +1242,9 @@ TEST_P(ImageTest, SourceCubeTargetExternal)
 {
     EGLWindow *window = getEGLWindow();
     ANGLE_SKIP_TEST_IF(!hasOESExt() || !hasBaseExt() || !hasCubemapExt() || !hasExternalExt());
+
+    // Ozone only supports external target for images created with EGL_EXT_image_dma_buf_import
+    ANGLE_SKIP_TEST_IF(IsOzone());
 
     GLubyte data[24] = {
         255, 0, 255, 255, 255, 255, 255, 255, 255, 0, 0, 255,
@@ -1453,6 +1482,9 @@ TEST_P(ImageTest, SourceRenderbufferTargetTextureExternal)
     EGLWindow *window = getEGLWindow();
     ANGLE_SKIP_TEST_IF(!hasOESExt() || !hasExternalExt() || !hasBaseExt() || !hasRenderbufferExt());
 
+    // Ozone only supports external target for images created with EGL_EXT_image_dma_buf_import
+    ANGLE_SKIP_TEST_IF(IsOzone());
+
     GLubyte data[4] = {255, 0, 255, 255};
 
     // Create the Image
@@ -1593,11 +1625,12 @@ TEST_P(ImageTest, MipLevels)
 
     const size_t mipLevels   = 3;
     const size_t textureSize = 4;
-    std::vector<GLuint> mip0Data(textureSize * textureSize, 0xFFFF0000);
-    std::vector<GLuint> mip1Data(mip0Data.size() << 1, 0xFF00FF00);
-    std::vector<GLuint> mip2Data(mip0Data.size() << 2, 0xFF0000FF);
+    std::vector<GLColor> mip0Data(textureSize * textureSize, GLColor::red);
+    std::vector<GLColor> mip1Data(mip0Data.size() << 1, GLColor::green);
+    std::vector<GLColor> mip2Data(mip0Data.size() << 2, GLColor::blue);
     GLubyte *data[mipLevels] = {
-        reinterpret_cast<GLubyte *>(&mip0Data[0]), reinterpret_cast<GLubyte *>(&mip1Data[0]),
+        reinterpret_cast<GLubyte *>(&mip0Data[0]),
+        reinterpret_cast<GLubyte *>(&mip1Data[0]),
         reinterpret_cast<GLubyte *>(&mip2Data[0]),
     };
 
@@ -1617,7 +1650,9 @@ TEST_P(ImageTest, MipLevels)
     {
         // Create the Image
         EGLint attribs[] = {
-            EGL_GL_TEXTURE_LEVEL_KHR, static_cast<EGLint>(level), EGL_NONE,
+            EGL_GL_TEXTURE_LEVEL_KHR,
+            static_cast<EGLint>(level),
+            EGL_NONE,
         };
         EGLImageKHR image =
             eglCreateImageKHR(window->getDisplay(), window->getContext(), EGL_GL_TEXTURE_2D_KHR,
@@ -1639,6 +1674,36 @@ TEST_P(ImageTest, MipLevels)
         // Expect that the targets have the same color as the source texture
         verifyResults2D(textureTarget, data[level]);
         verifyResultsRenderbuffer(renderbufferTarget, data[level]);
+
+        // Update the data by uploading data to the texture
+        std::vector<GLuint> textureUpdateData(textureSize * textureSize, level);
+        glBindTexture(GL_TEXTURE_2D, textureTarget);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, textureSize >> level, textureSize >> level, GL_RGBA,
+                        GL_UNSIGNED_BYTE, textureUpdateData.data());
+        ASSERT_GL_NO_ERROR();
+
+        // Expect that both the texture and renderbuffer see the updated texture data
+        verifyResults2D(textureTarget, reinterpret_cast<GLubyte *>(textureUpdateData.data()));
+        verifyResultsRenderbuffer(renderbufferTarget,
+                                  reinterpret_cast<GLubyte *>(textureUpdateData.data()));
+
+        // Update the renderbuffer by clearing it
+        GLFramebuffer fbo;
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER,
+                                  renderbufferTarget);
+
+        GLubyte clearValue = static_cast<GLubyte>(level);
+        GLubyte renderbufferClearData[4]{clearValue, clearValue, clearValue, clearValue};
+        glClearColor(renderbufferClearData[0] / 255.0f, renderbufferClearData[1] / 255.0f,
+                     renderbufferClearData[2] / 255.0f, renderbufferClearData[3] / 255.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        ASSERT_GL_NO_ERROR();
+
+        // Expect that both the texture and renderbuffer see the cleared renderbuffer data
+        verifyResults2D(textureTarget, renderbufferClearData);
+        verifyResultsRenderbuffer(renderbufferTarget, renderbufferClearData);
 
         // Clean up
         eglDestroyImageKHR(window->getDisplay(), image);
@@ -1891,4 +1956,4 @@ ANGLE_INSTANTIATE_TEST(ImageTest,
                        ES3_OPENGLES(),
                        ES2_VULKAN());
 ANGLE_INSTANTIATE_TEST(ImageTestES3, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
-}
+}  // namespace angle

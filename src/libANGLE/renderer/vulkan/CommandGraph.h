@@ -30,6 +30,7 @@ enum class CommandGraphResourceType
     Framebuffer,
     Image,
     Query,
+    FenceSync,
 };
 
 // Certain functionality cannot be put in secondary command buffers, so they are special-cased in
@@ -39,6 +40,24 @@ enum class CommandGraphNodeFunction
     Generic,
     BeginQuery,
     EndQuery,
+    WriteTimestamp,
+    SetFenceSync,
+    WaitFenceSync,
+};
+
+// Receives notifications when a command buffer is no longer able to record. Can be used with
+// inheritance. Faster than using an interface class since it has inlined methods. Could be used
+// with composition by adding a getCommandBuffer method.
+class CommandBufferOwner
+{
+  public:
+    CommandBufferOwner() = default;
+    virtual ~CommandBufferOwner() {}
+
+    ANGLE_INLINE void onCommandBufferFinished() { mCommandBuffer = nullptr; }
+
+  protected:
+    vk::CommandBuffer *mCommandBuffer = nullptr;
 };
 
 // Only used internally in the command graph. Kept in the header for better inlining performance.
@@ -75,7 +94,13 @@ class CommandGraphNode final : angle::NonCopyable
     // Once a node has commands that must happen after it, recording is stopped and the node is
     // frozen forever.
     static void SetHappensBeforeDependency(CommandGraphNode *beforeNode,
-                                           CommandGraphNode *afterNode);
+                                           CommandGraphNode *afterNode)
+    {
+        ASSERT(beforeNode != afterNode && !beforeNode->isChildOf(afterNode));
+        afterNode->mParents.emplace_back(beforeNode);
+        beforeNode->setHasChildren();
+    }
+
     static void SetHappensBeforeDependencies(CommandGraphNode **beforeNodes,
                                              size_t beforeNodesCount,
                                              CommandGraphNode *afterNode);
@@ -105,9 +130,30 @@ class CommandGraphNode final : angle::NonCopyable
     CommandGraphNodeFunction getFunction() const { return mFunction; }
 
     void setQueryPool(const QueryPool *queryPool, uint32_t queryIndex);
+    void setFenceSync(const vk::Event &event);
+
+    ANGLE_INLINE void addGlobalMemoryBarrier(VkFlags srcAccess, VkFlags dstAccess)
+    {
+        mGlobalMemoryBarrierSrcAccess |= srcAccess;
+        mGlobalMemoryBarrierDstAccess |= dstAccess;
+    }
+
+    // This can only be set for RenderPass nodes. Each RenderPass node can have at most one owner.
+    void setCommandBufferOwner(CommandBufferOwner *owner)
+    {
+        ASSERT(mCommandBufferOwner == nullptr);
+        mCommandBufferOwner = owner;
+    }
 
   private:
-    void setHasChildren();
+    ANGLE_INLINE void setHasChildren()
+    {
+        mHasChildren = true;
+        if (mCommandBufferOwner)
+        {
+            mCommandBufferOwner->onCommandBufferFinished();
+        }
+    }
 
     // Used for testing only.
     bool isChildOf(CommandGraphNode *parent);
@@ -126,8 +172,11 @@ class CommandGraphNode final : angle::NonCopyable
     CommandBuffer mInsideRenderPassCommands;
 
     // Special-function additional data:
+    // Queries:
     VkQueryPool mQueryPool;
     uint32_t mQueryIndex;
+    // GLsync and EGLSync:
+    VkEvent mFenceSyncEvent;
 
     // Parents are commands that must be submitted before 'this' CommandNode can be submitted.
     std::vector<CommandGraphNode *> mParents;
@@ -141,6 +190,13 @@ class CommandGraphNode final : angle::NonCopyable
     // Additional diagnostic information.
     CommandGraphResourceType mResourceType;
     uintptr_t mResourceID;
+
+    // For global memory barriers.
+    VkFlags mGlobalMemoryBarrierSrcAccess;
+    VkFlags mGlobalMemoryBarrierDstAccess;
+
+    // Command buffer notifications.
+    CommandBufferOwner *mCommandBufferOwner;
 };
 
 // This is a helper class for back-end objects used in Vk command buffers. It records a serial
@@ -157,8 +213,9 @@ class CommandGraphResource : angle::NonCopyable
     // Returns true if the resource is in use by the renderer.
     bool isResourceInUse(RendererVk *renderer) const;
 
-    // Returns true if the resource has unsubmitted work pending.
-    bool hasPendingWork(RendererVk *renderer) const;
+    // Get the current queue serial for this resource. Used to release resources, and for
+    // queries, to know if the queue they are submitted on has finished execution.
+    Serial getStoredQueueSerial() const { return mStoredQueueSerial; }
 
     // Sets up dependency relations. 'this' resource is the resource being written to.
     void addWriteDependency(CommandGraphResource *writingResource);
@@ -166,26 +223,50 @@ class CommandGraphResource : angle::NonCopyable
     // Sets up dependency relations. 'this' resource is the resource being read.
     void addReadDependency(CommandGraphResource *readingResource);
 
+    // Updates the in-use serial tracked for this resource. Will clear dependencies if the resource
+    // was not used in this set of command nodes.
+    ANGLE_INLINE void updateQueueSerial(Serial queueSerial)
+    {
+        ASSERT(queueSerial >= mStoredQueueSerial);
+
+        if (queueSerial > mStoredQueueSerial)
+        {
+            mCurrentWritingNode = nullptr;
+            mCurrentReadingNodes.clear();
+            mStoredQueueSerial = queueSerial;
+        }
+    }
+
     // Allocates a write node via getNewWriteNode and returns a started command buffer.
     // The started command buffer will render outside of a RenderPass.
     // Will append to an existing command buffer/graph node if possible.
     angle::Result recordCommands(Context *context, CommandBuffer **commandBufferOut);
 
     // Begins a command buffer on the current graph node for in-RenderPass rendering.
-    // Currently only called from FramebufferVk::getCommandBufferForDraw.
-    angle::Result beginRenderPass(Context *context,
+    // Called from FramebufferVk::startNewRenderPass and UtilsVk functions.
+    angle::Result beginRenderPass(ContextVk *contextVk,
                                   const Framebuffer &framebuffer,
                                   const gl::Rectangle &renderArea,
                                   const RenderPassDesc &renderPassDesc,
                                   const std::vector<VkClearValue> &clearValues,
                                   CommandBuffer **commandBufferOut);
 
-    void beginQuery(Context *context, const QueryPool *queryPool, uint32_t queryIndex);
-    void endQuery(Context *context, const QueryPool *queryPool, uint32_t queryIndex);
-
     // Checks if we're in a RenderPass, returning true if so. Updates serial internally.
     // Returns the started command buffer in commandBufferOut.
-    bool appendToStartedRenderPass(RendererVk *renderer, CommandBuffer **commandBufferOut);
+    ANGLE_INLINE bool appendToStartedRenderPass(Serial currentQueueSerial,
+                                                CommandBuffer **commandBufferOut)
+    {
+        updateQueueSerial(currentQueueSerial);
+        if (hasStartedRenderPass())
+        {
+            *commandBufferOut = mCurrentWritingNode->getInsideRenderPassCommands();
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
 
     // Accessor for RenderPass RenderArea.
     const gl::Rectangle &getRenderPassRenderArea() const;
@@ -193,19 +274,19 @@ class CommandGraphResource : angle::NonCopyable
     // Called when 'this' object changes, but we'd like to start a new command buffer later.
     void finishCurrentCommands(RendererVk *renderer);
 
+    // Store a deferred memory barrier. Will be recorded into a primary command buffer at submit.
+    void addGlobalMemoryBarrier(VkFlags srcAccess, VkFlags dstAccess)
+    {
+        ASSERT(mCurrentWritingNode);
+        mCurrentWritingNode->addGlobalMemoryBarrier(srcAccess, dstAccess);
+    }
+
   protected:
     explicit CommandGraphResource(CommandGraphResourceType resourceType);
 
-    // Get the current queue serial for this resource. Only used to release resources.
-    Serial getStoredQueueSerial() const;
-
   private:
-    void startNewCommands(RendererVk *renderer, CommandGraphNodeFunction function);
-
-    void onWriteImpl(CommandGraphNode *writingNode, Serial currentSerial);
-
     // Returns true if this node has a current writing node with no children.
-    bool hasChildlessWritingNode() const
+    ANGLE_INLINE bool hasChildlessWritingNode() const
     {
         // Note: currently, we don't have a resource that can issue both generic and special
         // commands.  We don't create read/write dependencies between mixed generic/special
@@ -224,12 +305,15 @@ class CommandGraphResource : angle::NonCopyable
                mCurrentWritingNode->getInsideRenderPassCommands()->valid();
     }
 
-    // Updates the in-use serial tracked for this resource. Will clear dependencies if the resource
-    // was not used in this set of command nodes.
-    void updateQueueSerial(Serial queueSerial);
+    void startNewCommands(RendererVk *renderer);
+
+    void onWriteImpl(CommandGraphNode *writingNode, Serial currentSerial);
 
     Serial mStoredQueueSerial;
+
     std::vector<CommandGraphNode *> mCurrentReadingNodes;
+
+    // Current command graph writing node.
     CommandGraphNode *mCurrentWritingNode;
 
     // Additional diagnostic information.
@@ -267,7 +351,7 @@ class CommandGraph final : angle::NonCopyable
     // relations exist in the node by default. Call CommandGraphNode::SetHappensBeforeDependency
     // to set up dependency relations. If the node is a barrier, it will automatically add
     // dependencies between the previous barrier, the new barrier and all nodes in between.
-    CommandGraphNode *allocateNode(bool isBarrier, CommandGraphNodeFunction function);
+    CommandGraphNode *allocateNode(CommandGraphNodeFunction function);
 
     angle::Result submitCommands(Context *context,
                                  Serial serial,
@@ -275,14 +359,25 @@ class CommandGraph final : angle::NonCopyable
                                  CommandPool *commandPool,
                                  CommandBuffer *primaryCommandBufferOut);
     bool empty() const;
+    void clear();
 
-    CommandGraphNode *getLastBarrierNode(size_t *indexOut);
+    // The following create special-function nodes that don't require a graph resource.
+    // Queries:
+    void beginQuery(const QueryPool *queryPool, uint32_t queryIndex);
+    void endQuery(const QueryPool *queryPool, uint32_t queryIndex);
+    void writeTimestamp(const QueryPool *queryPool, uint32_t queryIndex);
+    // GLsync and EGLSync:
+    void setFenceSync(const vk::Event &event);
+    void waitFenceSync(const vk::Event &event);
 
   private:
-    void dumpGraphDotFile(std::ostream &out) const;
-
+    CommandGraphNode *allocateBarrierNode(CommandGraphResourceType resourceType,
+                                          CommandGraphNodeFunction function);
     void setNewBarrier(CommandGraphNode *newBarrier);
+    CommandGraphNode *getLastBarrierNode(size_t *indexOut);
     void addDependenciesToNextBarrier(size_t begin, size_t end, CommandGraphNode *nextBarrier);
+
+    void dumpGraphDotFile(std::ostream &out) const;
 
     std::vector<CommandGraphNode *> mNodes;
     bool mEnableGraphDiagnostics;

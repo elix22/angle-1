@@ -15,14 +15,14 @@
 #include "libANGLE/renderer/vulkan/ContextVk.h"
 #include "libANGLE/renderer/vulkan/RendererVk.h"
 #include "libANGLE/renderer/vulkan/SurfaceVk.h"
+#include "libANGLE/renderer/vulkan/SyncVk.h"
 
 namespace rx
 {
 
 DisplayVk::DisplayVk(const egl::DisplayState &state)
     : DisplayImpl(state), vk::Context(new RendererVk()), mScratchBuffer(1000u)
-{
-}
+{}
 
 DisplayVk::~DisplayVk()
 {
@@ -32,7 +32,7 @@ DisplayVk::~DisplayVk()
 egl::Error DisplayVk::initialize(egl::Display *display)
 {
     ASSERT(mRenderer != nullptr && display != nullptr);
-    angle::Result result = mRenderer->initialize(this, display->getAttributeMap(), getWSIName());
+    angle::Result result = mRenderer->initialize(this, display, getWSIName());
     ANGLE_TRY(angle::ToEGL(result, this, EGL_NOT_INITIALIZED));
     return egl::NoError();
 }
@@ -81,10 +81,6 @@ DeviceImpl *DisplayVk::createDevice()
 
 egl::Error DisplayVk::waitClient(const gl::Context *context)
 {
-    // TODO(jmadill): Call flush instead of finish once it is implemented in RendererVK.
-    // http://anglebug.com/2504
-    UNIMPLEMENTED();
-
     return angle::ToEGL(mRenderer->finish(this), this, EGL_BAD_ACCESS);
 }
 
@@ -141,12 +137,13 @@ ImageImpl *DisplayVk::createImage(const egl::ImageState &state,
     return static_cast<ImageImpl *>(0);
 }
 
-ContextImpl *DisplayVk::createContext(const gl::ContextState &state,
-                                      const egl::Config *configuration,
-                                      const gl::Context *shareContext,
-                                      const egl::AttributeMap &attribs)
+rx::ContextImpl *DisplayVk::createContext(const gl::State &state,
+                                          gl::ErrorSet *errorSet,
+                                          const egl::Config *configuration,
+                                          const gl::Context *shareContext,
+                                          const egl::AttributeMap &attribs)
 {
-    return new ContextVk(state, mRenderer);
+    return new ContextVk(state, errorSet, mRenderer);
 }
 
 StreamProducerImpl *DisplayVk::createStreamProducerD3DTexture(
@@ -157,10 +154,14 @@ StreamProducerImpl *DisplayVk::createStreamProducerD3DTexture(
     return static_cast<StreamProducerImpl *>(0);
 }
 
+EGLSyncImpl *DisplayVk::createSync(const egl::AttributeMap &attribs)
+{
+    return new EGLSyncVk(attribs);
+}
+
 gl::Version DisplayVk::getMaxSupportedESVersion() const
 {
-    UNIMPLEMENTED();
-    return gl::Version(0, 0);
+    return mRenderer->getMaxSupportedESVersion();
 }
 
 void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
@@ -173,8 +174,13 @@ void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
     // backend can be tested in Chrome. http://anglebug.com/2722
     outExtensions->robustResourceInitialization = true;
 
-    // Vulkan implementation will use regular swap for swapBuffersWithDamage.
+    // The Vulkan implementation will always say that EGL_KHR_swap_buffers_with_damage is supported.
+    // When the Vulkan driver supports VK_KHR_incremental_present, it will use it.  Otherwise, it
+    // will ignore the hint and do a regular swap.
     outExtensions->swapBuffersWithDamage = true;
+
+    outExtensions->fenceSync = true;
+    outExtensions->waitSync  = true;
 }
 
 void DisplayVk::generateCaps(egl::Caps *outCaps) const
@@ -188,20 +194,26 @@ bool DisplayVk::getScratchBuffer(size_t requstedSizeBytes,
     return mScratchBuffer.get(requstedSizeBytes, scratchBufferOut);
 }
 
-void DisplayVk::handleError(VkResult result, const char *file, unsigned int line)
+void DisplayVk::handleError(VkResult result,
+                            const char *file,
+                            const char *function,
+                            unsigned int line)
 {
+    ASSERT(result != VK_SUCCESS);
+
     std::stringstream errorStream;
     errorStream << "Internal Vulkan error: " << VulkanResultString(result) << ", in " << file
-                << ", line " << line << ".";
+                << ", " << function << ":" << line << ".";
     mStoredErrorString = errorStream.str();
 
     if (result == VK_ERROR_DEVICE_LOST)
     {
-        mRenderer->markDeviceLost();
+        WARN() << mStoredErrorString;
+        mRenderer->notifyDeviceLost();
     }
 }
 
-// TODO(jmadill): Remove this. http://anglebug.com/2491
+// TODO(jmadill): Remove this. http://anglebug.com/3041
 egl::Error DisplayVk::getEGLError(EGLint errorCode)
 {
     return egl::Error(errorCode, 0, std::move(mStoredErrorString));

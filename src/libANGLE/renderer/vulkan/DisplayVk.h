@@ -59,13 +59,17 @@ class DisplayVk : public DisplayImpl, public vk::Context
                            EGLenum target,
                            const egl::AttributeMap &attribs) override;
 
-    ContextImpl *createContext(const gl::ContextState &state,
+    ContextImpl *createContext(const gl::State &state,
+                               gl::ErrorSet *errorSet,
                                const egl::Config *configuration,
                                const gl::Context *shareContext,
                                const egl::AttributeMap &attribs) override;
 
     StreamProducerImpl *createStreamProducerD3DTexture(egl::Stream::ConsumerType consumerType,
                                                        const egl::AttributeMap &attribs) override;
+
+    EGLSyncImpl *createSync(const egl::AttributeMap &attribs) override;
+
     gl::Version getMaxSupportedESVersion() const override;
 
     virtual const char *getWSIName() const = 0;
@@ -79,9 +83,12 @@ class DisplayVk : public DisplayImpl, public vk::Context
                                            angle::MemoryBuffer **scratchBufferOut) const;
     angle::ScratchBuffer *getScratchBuffer() const { return &mScratchBuffer; }
 
-    void handleError(VkResult result, const char *file, unsigned int line) override;
+    void handleError(VkResult result,
+                     const char *file,
+                     const char *function,
+                     unsigned int line) override;
 
-    // TODO(jmadill): Remove this once refactor is done. http://anglebug.com/2491
+    // TODO(jmadill): Remove this once refactor is done. http://anglebug.com/3041
     egl::Error getEGLError(EGLint errorCode);
 
   private:
