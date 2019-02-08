@@ -16,6 +16,7 @@
 #include "libANGLE/renderer/vulkan/RendererVk.h"
 #include "libANGLE/renderer/vulkan/SurfaceVk.h"
 #include "libANGLE/renderer/vulkan/SyncVk.h"
+#include "third_party/trace_event/trace_event.h"
 
 namespace rx
 {
@@ -32,7 +33,7 @@ DisplayVk::~DisplayVk()
 egl::Error DisplayVk::initialize(egl::Display *display)
 {
     ASSERT(mRenderer != nullptr && display != nullptr);
-    angle::Result result = mRenderer->initialize(this, display, getWSIName());
+    angle::Result result = mRenderer->initialize(this, display, getWSIExtension(), getWSILayer());
     ANGLE_TRY(angle::ToEGL(result, this, EGL_NOT_INITIALIZED));
     return egl::NoError();
 }
@@ -81,6 +82,7 @@ DeviceImpl *DisplayVk::createDevice()
 
 egl::Error DisplayVk::waitClient(const gl::Context *context)
 {
+    TRACE_EVENT0("gpu.angle", "DisplayVk::waitClient");
     return angle::ToEGL(mRenderer->finish(this), this, EGL_BAD_ACCESS);
 }
 
@@ -186,6 +188,11 @@ void DisplayVk::generateExtensions(egl::DisplayExtensions *outExtensions) const
 void DisplayVk::generateCaps(egl::Caps *outCaps) const
 {
     outCaps->textureNPOT = true;
+}
+
+const char *DisplayVk::getWSILayer() const
+{
+    return nullptr;
 }
 
 bool DisplayVk::getScratchBuffer(size_t requstedSizeBytes,
