@@ -70,6 +70,12 @@
 #        include "libANGLE/renderer/vulkan/xcb/DisplayVkXcb.h"
 #    elif defined(ANGLE_PLATFORM_ANDROID)
 #        include "libANGLE/renderer/vulkan/android/DisplayVkAndroid.h"
+#    elif defined(ANGLE_PLATFORM_APPLE)  // ELIX22 - added MoltenVK support
+#       if VK_USE_PLATFORM_IOS_MVK
+#           include "libANGLE/renderer/vulkan/ios/DisplayVkiOS.h"
+#       else
+#           include "libANGLE/renderer/vulkan/macos/DisplayVkMacOS.h"
+#       endif
 #    else
 #        error Unsupported Vulkan platform.
 #    endif
@@ -188,7 +194,9 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
 #elif defined(ANGLE_USE_X11)
             impl = new rx::DisplayGLX(state);
 #elif defined(ANGLE_PLATFORM_APPLE)
+#   ifndef URHO3D_ANGLE_VULKAN
             impl = new rx::DisplayCGL(state);
+#   endif
 #elif defined(ANGLE_USE_OZONE)
             impl = new rx::DisplayOzone(state);
 #elif defined(ANGLE_PLATFORM_ANDROID)
@@ -261,6 +269,12 @@ rx::DisplayImpl *CreateDisplayFromAttribs(const AttributeMap &attribMap, const D
             impl = new rx::DisplayVkXcb(state);
 #    elif defined(ANGLE_PLATFORM_ANDROID)
             impl = new rx::DisplayVkAndroid(state);
+#    elif defined(ANGLE_PLATFORM_APPLE)  // ELIX22 - added MoltenVK  support
+#       if VK_USE_PLATFORM_IOS_MVK
+            impl  =  new rx::DisplayVkiOS(state);
+#       else
+            impl  =  new rx::DisplayVkMacOS(state);
+#       endif //  VK_USE_PLATFORM_IOS_MVK
 #    else
 #        error Unsupported Vulkan platform.
 #    endif
