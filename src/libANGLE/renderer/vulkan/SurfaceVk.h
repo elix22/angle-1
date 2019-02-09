@@ -60,6 +60,8 @@ class OffscreenSurfaceVk : public SurfaceImpl
     angle::Result initializeContents(const gl::Context *context,
                                      const gl::ImageIndex &imageIndex) override;
 
+    vk::ImageHelper *getColorAttachmentImage();
+
   private:
     struct AttachmentImage final : angle::NonCopyable
     {
@@ -153,10 +155,15 @@ class WindowSurfaceVk : public SurfaceImpl
     void releaseSwapchainImages(RendererVk *renderer);
     angle::Result nextSwapchainImage(DisplayVk *displayVk);
     angle::Result swapImpl(DisplayVk *displayVk, EGLint *rects, EGLint n_rects);
+    angle::Result resizeSwapHistory(DisplayVk *displayVk, size_t imageCount);
+
+    VkSurfaceCapabilitiesKHR mSurfaceCaps;
+    std::vector<VkPresentModeKHR> mPresentModes;
 
     VkSwapchainKHR mSwapchain;
     // Cached information used to recreate swapchains.
-    VkPresentModeKHR mSwapchainPresentMode;
+    VkPresentModeKHR mSwapchainPresentMode;         // Current swapchain mode
+    VkPresentModeKHR mDesiredSwapchainPresentMode;  // Desired mode set through setSwapInterval()
     uint32_t mMinImageCount;
     VkSurfaceTransformFlagBitsKHR mPreTransform;
     VkCompositeAlphaFlagBitsKHR mCompositeAlpha;
