@@ -213,6 +213,8 @@ libangle_sources = [
   "src/libANGLE/IndexRangeCache.h",
   "src/libANGLE/LoggingAnnotator.cpp",
   "src/libANGLE/LoggingAnnotator.h",
+  "src/libANGLE/MemoryObject.cpp",
+  "src/libANGLE/MemoryObject.h",
   "src/libANGLE/MemoryProgramCache.cpp",
   "src/libANGLE/MemoryProgramCache.h",
   "src/libANGLE/Observer.cpp",
@@ -298,6 +300,7 @@ libangle_sources = [
   "src/libANGLE/renderer/FramebufferImpl.h",
   "src/libANGLE/renderer/GLImplFactory.h",
   "src/libANGLE/renderer/ImageImpl.h",
+  "src/libANGLE/renderer/MemoryObjectImpl.h",
   "src/libANGLE/renderer/PathImpl.h",
   "src/libANGLE/renderer/ProgramImpl.h",
   "src/libANGLE/renderer/ProgramPipelineImpl.h",
@@ -317,7 +320,7 @@ libangle_sources = [
   "src/libANGLE/renderer/TransformFeedbackImpl.h",
   "src/libANGLE/renderer/VertexArrayImpl.h",
   "src/libANGLE/renderer/copyvertex.h",
-  "src/libANGLE/renderer/copyvertex.inc",
+  "src/libANGLE/renderer/copyvertex.inc.h",
   "src/libANGLE/renderer/load_functions_table.h",
   "src/libANGLE/renderer/load_functions_table_autogen.cpp",
   "src/libANGLE/renderer/renderer_utils.cpp",
@@ -744,6 +747,8 @@ libangle_gl_egl_android_sources = [
 ]
 
 libangle_gl_cgl_sources = [
+  "src/libANGLE/renderer/gl/cgl/ContextCGL.cpp",
+  "src/libANGLE/renderer/gl/cgl/ContextCGL.h",
   "src/libANGLE/renderer/gl/cgl/DisplayCGL.mm",
   "src/libANGLE/renderer/gl/cgl/DisplayCGL.h",
   "src/libANGLE/renderer/gl/cgl/IOSurfaceSurfaceCGL.mm",
@@ -777,6 +782,8 @@ libangle_vulkan_sources = [
   "src/libANGLE/renderer/vulkan/GlslangWrapper.h",
   "src/libANGLE/renderer/vulkan/ImageVk.cpp",
   "src/libANGLE/renderer/vulkan/ImageVk.h",
+  "src/libANGLE/renderer/vulkan/MemoryObjectVk.cpp",
+  "src/libANGLE/renderer/vulkan/MemoryObjectVk.h",
   "src/libANGLE/renderer/vulkan/ProgramVk.cpp",
   "src/libANGLE/renderer/vulkan/ProgramVk.h",
   "src/libANGLE/renderer/vulkan/ProgramPipelineVk.cpp",
@@ -936,4 +943,7 @@ libegl_sources = [
   "src/libEGL/libEGL.cpp",
   "src/libEGL/libEGL.rc",
   "src/libEGL/resource.h",
+  "src/libGLESv2/entry_points_egl.h",
+  "src/libGLESv2/entry_points_egl_ext.h",
+  "src/libEGL/egl_loader_autogen.h",
 ]

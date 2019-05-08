@@ -30,14 +30,6 @@ class CopyTexture3DTest : public ANGLETest
     {
         ANGLETest::SetUp();
 
-        if (extensionEnabled("GL_ANGLE_copy_texture_3d"))
-        {
-            glCopyTexture3DANGLE = reinterpret_cast<PFNGLCOPYTEXTURE3DANGLEPROC>(
-                eglGetProcAddress("glCopyTexture3DANGLE"));
-            glCopySubTexture3DANGLE = reinterpret_cast<PFNGLCOPYSUBTEXTURE3DANGLEPROC>(
-                eglGetProcAddress("glCopySubTexture3DANGLE"));
-        }
-
         const char *vertexShaderSource   = getVertexShaderSource();
         const char *fragmentShaderSource = getFragmentShaderSource();
 
@@ -65,7 +57,7 @@ class CopyTexture3DTest : public ANGLETest
 
     bool checkExtensions() const
     {
-        if (!extensionEnabled("GL_ANGLE_copy_texture_3d"))
+        if (!IsGLExtensionEnabled("GL_ANGLE_copy_texture_3d"))
         {
             std::cout << "Test skipped because GL_ANGLE_copy_texture_3d is not available."
                       << std::endl;
@@ -243,9 +235,6 @@ class CopyTexture3DTest : public ANGLETest
     GLuint mProgram = 0;
     GLTexture sourceTexture;
     GLTexture destTexture;
-
-    PFNGLCOPYTEXTURE3DANGLEPROC glCopyTexture3DANGLE       = nullptr;
-    PFNGLCOPYSUBTEXTURE3DANGLEPROC glCopySubTexture3DANGLE = nullptr;
 };
 
 class Texture3DCopy : public CopyTexture3DTest

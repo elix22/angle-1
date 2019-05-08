@@ -69,12 +69,31 @@ struct FeaturesVk
     // extension, on which the EGL_ANDROID_image_native_buffer extension can be layered.
     bool supportsAndroidHardwareBuffer = false;
 
+    // Whether the VkDevice supports the VK_KHR_external_memory_fd
+    // extension, on which the GL_EXT_memory_object_fd extension can be layered.
+    bool supportsExternalMemoryFd = false;
+
+    // Whether the VkDevice supports the VK_KHR_external_semaphore_fd
+    // extension, on which the GL_EXT_semaphore_fd extension can be layered.
+    bool supportsExternalSemaphoreFd = false;
+
     // VK_PRESENT_MODE_FIFO_KHR causes random timeouts on Linux Intel. http://anglebug.com/3153
     bool disableFifoPresentMode = false;
 
-    // On Qualcomm, a bug is preventing us from using this optimization with inline commands in the
+    // On Qualcomm, a bug is preventing us from using loadOp=Clear with inline commands in the
     // render pass.  http://anglebug.com/2361
-    bool disableClearWithRenderPassLoadOp = false;
+    bool restartRenderPassAfterLoadOpClear = false;
+
+    // On Qualcomm, gaps in bound descriptor set indices causes the post-gap sets to misbehave.
+    // For example, binding only descriptor set 3 results in zero being read from a uniform buffer
+    // object within that set.  This flag results in empty descriptor sets being bound for any
+    // unused descriptor set to work around this issue.  http://anglebug.com/2727
+    bool bindEmptyForUnusedDescriptorSets = false;
+
+    // When the scissor is (0,0,0,0) on Windows Intel, the driver acts as if the scissor was
+    // disabled.  Work-around this by setting the scissor to just outside of the render area
+    // (e.g. (renderArea.x, renderArea.y, 1, 1)). http://anglebug.com/3153
+    bool forceNonZeroScissor = false;
 };
 
 inline FeaturesVk::FeaturesVk() = default;

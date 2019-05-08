@@ -18,15 +18,14 @@ using namespace angle;
 namespace
 {
 
-class EGLSurfacelessContextTest : public EGLTest,
-                                  public testing::WithParamInterface<PlatformParameters>
+class EGLSurfacelessContextTest : public ANGLETest
 {
   public:
     EGLSurfacelessContextTest() : mDisplay(0) {}
 
     void SetUp() override
     {
-        EGLTest::SetUp();
+        ANGLETest::SetUp();
 
         EGLint dispattrs[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, GetParam().getRenderer(), EGL_NONE};
         mDisplay           = eglGetPlatformDisplayEXT(
@@ -72,6 +71,8 @@ class EGLSurfacelessContextTest : public EGLTest,
         }
 
         eglTerminate(mDisplay);
+
+        ANGLETest::TearDown();
     }
 
   protected:
@@ -107,7 +108,7 @@ class EGLSurfacelessContextTest : public EGLTest,
 
     bool checkExtension(bool verbose = true) const
     {
-        if (!ANGLETest::eglDisplayExtensionEnabled(mDisplay, "EGL_KHR_surfaceless_context"))
+        if (!IsEGLDisplayExtensionEnabled(mDisplay, "EGL_KHR_surfaceless_context"))
         {
             if (verbose)
             {
@@ -261,7 +262,7 @@ TEST_P(EGLSurfacelessContextTest, Switcheroo)
 }  // anonymous namespace
 
 ANGLE_INSTANTIATE_TEST(EGLSurfacelessContextTest,
-                       ES2_D3D9(),
-                       ES2_D3D11(),
-                       ES2_OPENGL(),
-                       ES2_VULKAN());
+                       WithNoFixture(ES2_D3D9()),
+                       WithNoFixture(ES2_D3D11()),
+                       WithNoFixture(ES2_OPENGL()),
+                       WithNoFixture(ES2_VULKAN()));

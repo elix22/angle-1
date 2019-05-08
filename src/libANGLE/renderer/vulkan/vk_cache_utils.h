@@ -115,10 +115,8 @@ class AttachmentOpsArray final
 
     // Initializes an attachment op with whatever values. Used for compatible RenderPass checks.
     void initDummyOp(size_t index, VkImageLayout initialLayout, VkImageLayout finalLayout);
-
-    void setLayout(size_t index, VkImageLayout initialLayout, VkImageLayout finalLayout);
-    void setLoadOp(size_t index, VkAttachmentLoadOp loadOp, VkAttachmentLoadOp stencilLoadOp);
-    void setStoreOp(size_t index, VkAttachmentStoreOp storeOp, VkAttachmentStoreOp stencilStoreOp);
+    // Initialize an attachment op with all load and store operations.
+    void initWithLoadStore(size_t index, VkImageLayout initialLayout, VkImageLayout finalLayout);
 
     size_t hash() const;
 
@@ -330,8 +328,8 @@ class GraphicsPipelineDesc final
                                      const RenderPass &compatibleRenderPass,
                                      const PipelineLayout &pipelineLayout,
                                      const gl::AttributesMask &activeAttribLocationsMask,
-                                     const ShaderModule &vertexModule,
-                                     const ShaderModule &fragmentModule,
+                                     const ShaderModule *vertexModule,
+                                     const ShaderModule *fragmentModule,
                                      Pipeline *pipelineOut) const;
 
     // Vertex input state. For ES 3.1 this should be separated into binding and attribute.
@@ -369,11 +367,22 @@ class GraphicsPipelineDesc final
                               const gl::BlendState &blendState);
     void setColorWriteMask(VkColorComponentFlags colorComponentFlags,
                            const gl::DrawBufferMask &alphaMask);
+    void setSingleColorWriteMask(uint32_t colorIndex, VkColorComponentFlags colorComponentFlags);
     void updateColorWriteMask(GraphicsPipelineTransitionBits *transition,
                               VkColorComponentFlags colorComponentFlags,
                               const gl::DrawBufferMask &alphaMask);
 
     // Depth/stencil states.
+    void setDepthTestEnabled(bool enabled);
+    void setDepthWriteEnabled(bool enabled);
+    void setDepthFunc(VkCompareOp op);
+    void setStencilTestEnabled(bool enabled);
+    void setStencilFrontFuncs(uint8_t reference, VkCompareOp compareOp, uint8_t compareMask);
+    void setStencilBackFuncs(uint8_t reference, VkCompareOp compareOp, uint8_t compareMask);
+    void setStencilFrontOps(VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp);
+    void setStencilBackOps(VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp);
+    void setStencilFrontWriteMask(uint8_t mask);
+    void setStencilBackWriteMask(uint8_t mask);
     void updateDepthTestEnabled(GraphicsPipelineTransitionBits *transition,
                                 const gl::DepthStencilState &depthStencilState,
                                 const gl::Framebuffer *drawFramebuffer);
@@ -433,14 +442,16 @@ class GraphicsPipelineDesc final
 constexpr size_t kGraphicsPipelineDescSize = sizeof(GraphicsPipelineDesc);
 static_assert(kGraphicsPipelineDescSize == kGraphicsPipelineDescSumOfSizes, "Size mismatch");
 
-constexpr uint32_t kMaxDescriptorSetLayoutBindings = gl::IMPLEMENTATION_MAX_ACTIVE_TEXTURES;
+constexpr uint32_t kMaxDescriptorSetLayoutBindings =
+    std::max(gl::IMPLEMENTATION_MAX_ACTIVE_TEXTURES,
+             gl::IMPLEMENTATION_MAX_UNIFORM_BUFFER_BINDINGS);
 
 using DescriptorSetLayoutBindingVector =
     angle::FixedVector<VkDescriptorSetLayoutBinding, kMaxDescriptorSetLayoutBindings>;
 
 // A packed description of a descriptor set layout. Use similarly to RenderPassDesc and
-// GraphicsPipelineDesc. Currently we only need to differentiate layouts based on sampler usage. In
-// the future we could generalize this.
+// GraphicsPipelineDesc. Currently we only need to differentiate layouts based on sampler and ubo
+// usage. In the future we could generalize this.
 class DescriptorSetLayoutDesc final
 {
   public:
@@ -461,7 +472,6 @@ class DescriptorSetLayoutDesc final
     {
         uint16_t type;   // Stores a packed VkDescriptorType descriptorType.
         uint16_t count;  // Stores a packed uint32_t descriptorCount.
-        // We currently make all descriptors available in the VS and FS shaders.
     };
 
     static_assert(sizeof(PackedDescriptorSetBinding) == sizeof(uint32_t), "Unexpected size");
@@ -471,9 +481,9 @@ class DescriptorSetLayoutDesc final
         mPackedDescriptorSetLayout;
 };
 
-// The following are for caching descriptor set layouts. Limited to max two descriptor set layouts
+// The following are for caching descriptor set layouts. Limited to max four descriptor set layouts
 // and one push constant per shader stage. This can be extended in the future.
-constexpr size_t kMaxDescriptorSetLayouts = 3;
+constexpr size_t kMaxDescriptorSetLayouts = 4;
 constexpr size_t kMaxPushConstantRanges   = angle::EnumSize<gl::ShaderType>();
 
 struct PackedPushConstantRange
@@ -730,8 +740,8 @@ class GraphicsPipelineCache final : angle::NonCopyable
                                            const vk::RenderPass &compatibleRenderPass,
                                            const vk::PipelineLayout &pipelineLayout,
                                            const gl::AttributesMask &activeAttribLocationsMask,
-                                           const vk::ShaderModule &vertexModule,
-                                           const vk::ShaderModule &fragmentModule,
+                                           const vk::ShaderModule *vertexModule,
+                                           const vk::ShaderModule *fragmentModule,
                                            const vk::GraphicsPipelineDesc &desc,
                                            const vk::GraphicsPipelineDesc **descPtrOut,
                                            vk::PipelineHelper **pipelineOut)
@@ -755,8 +765,8 @@ class GraphicsPipelineCache final : angle::NonCopyable
                                  const vk::RenderPass &compatibleRenderPass,
                                  const vk::PipelineLayout &pipelineLayout,
                                  const gl::AttributesMask &activeAttribLocationsMask,
-                                 const vk::ShaderModule &vertexModule,
-                                 const vk::ShaderModule &fragmentModule,
+                                 const vk::ShaderModule *vertexModule,
+                                 const vk::ShaderModule *fragmentModule,
                                  const vk::GraphicsPipelineDesc &desc,
                                  const vk::GraphicsPipelineDesc **descPtrOut,
                                  vk::PipelineHelper **pipelineOut);
@@ -799,11 +809,32 @@ class PipelineLayoutCache final : angle::NonCopyable
 };
 
 // Some descriptor set and pipeline layout constants.
-constexpr uint32_t kVertexUniformsBindingIndex       = 0;
-constexpr uint32_t kFragmentUniformsBindingIndex     = 1;
-constexpr uint32_t kUniformsDescriptorSetIndex       = 0;
-constexpr uint32_t kTextureDescriptorSetIndex        = 1;
-constexpr uint32_t kDriverUniformsDescriptorSetIndex = 2;
+//
+// The set/binding assignment is done as following:
+//
+// - Set 0 contains the ANGLE driver uniforms at binding 0.  Note that driver uniforms are updated
+//   only under rare circumstances, such as viewport or depth range change.  However, there is only
+//   one binding in this set.
+// - Set 1 contains uniform blocks created to encompass default uniforms.  Bindings 0 and 1
+//   correspond to default uniforms in the vertex and fragment shaders respectively.
+// - Set 2 contains all textures.
+// - Set 3 contains all uniform blocks.
+
+// ANGLE driver uniforms set index (binding is always 0):
+constexpr uint32_t kDriverUniformsDescriptorSetIndex = 0;
+// Uniforms set index:
+constexpr uint32_t kUniformsDescriptorSetIndex = 1;
+// Textures set index:
+constexpr uint32_t kTextureDescriptorSetIndex = 2;
+// Uniform blocks set index:
+constexpr uint32_t kUniformBlockDescriptorSetIndex = 3;
+
+// Only 1 driver uniform binding is used.
+constexpr uint32_t kReservedDriverUniformBindingCount = 1;
+// Binding index for default uniforms in the vertex shader:
+constexpr uint32_t kVertexUniformsBindingIndex = 0;
+// Binding index for default uniforms in the fragment shader:
+constexpr uint32_t kFragmentUniformsBindingIndex = 1;
 
 }  // namespace rx
 

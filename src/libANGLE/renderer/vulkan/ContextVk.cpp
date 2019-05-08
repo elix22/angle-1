@@ -15,11 +15,14 @@
 #include "libANGLE/Context.h"
 #include "libANGLE/Program.h"
 #include "libANGLE/Surface.h"
+#include "libANGLE/angletypes.h"
+#include "libANGLE/renderer/renderer_utils.h"
 #include "libANGLE/renderer/vulkan/BufferVk.h"
 #include "libANGLE/renderer/vulkan/CommandGraph.h"
 #include "libANGLE/renderer/vulkan/CompilerVk.h"
 #include "libANGLE/renderer/vulkan/FenceNVVk.h"
 #include "libANGLE/renderer/vulkan/FramebufferVk.h"
+#include "libANGLE/renderer/vulkan/MemoryObjectVk.h"
 #include "libANGLE/renderer/vulkan/ProgramPipelineVk.h"
 #include "libANGLE/renderer/vulkan/ProgramVk.h"
 #include "libANGLE/renderer/vulkan/QueryVk.h"
@@ -27,6 +30,7 @@
 #include "libANGLE/renderer/vulkan/RendererVk.h"
 #include "libANGLE/renderer/vulkan/SamplerVk.h"
 #include "libANGLE/renderer/vulkan/ShaderVk.h"
+#include "libANGLE/renderer/vulkan/SurfaceVk.h"
 #include "libANGLE/renderer/vulkan/SyncVk.h"
 #include "libANGLE/renderer/vulkan/TextureVk.h"
 #include "libANGLE/renderer/vulkan/TransformFeedbackVk.h"
@@ -57,7 +61,7 @@ constexpr VkColorComponentFlags kAllColorChannelsMask =
      VK_COLOR_COMPONENT_A_BIT);
 
 constexpr VkBufferUsageFlags kVertexBufferUsage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-constexpr size_t kDefaultValueSize              = sizeof(float) * 4;
+constexpr size_t kDefaultValueSize              = sizeof(gl::VertexAttribCurrentValueData::Values);
 constexpr size_t kDefaultBufferSize             = kDefaultValueSize * 16;
 }  // anonymous namespace
 
@@ -72,6 +76,7 @@ ContextVk::ContextVk(const gl::State &state, gl::ErrorSet *errorSet, RendererVk 
       vk::Context(renderer),
       mCurrentPipeline(nullptr),
       mCurrentDrawMode(gl::PrimitiveMode::InvalidEnum),
+      mCurrentWindowSurface(nullptr),
       mVertexArray(nullptr),
       mDrawFramebuffer(nullptr),
       mProgram(nullptr),
@@ -97,6 +102,7 @@ ContextVk::ContextVk(const gl::State &state, gl::ErrorSet *errorSet, RendererVk 
     mNewCommandBufferDirtyBits.set(DIRTY_BIT_TEXTURES);
     mNewCommandBufferDirtyBits.set(DIRTY_BIT_VERTEX_BUFFERS);
     mNewCommandBufferDirtyBits.set(DIRTY_BIT_INDEX_BUFFER);
+    mNewCommandBufferDirtyBits.set(DIRTY_BIT_UNIFORM_BUFFERS);
     mNewCommandBufferDirtyBits.set(DIRTY_BIT_DESCRIPTOR_SETS);
 
     mDirtyBitHandlers[DIRTY_BIT_DEFAULT_ATTRIBS] = &ContextVk::handleDirtyDefaultAttribs;
@@ -105,6 +111,7 @@ ContextVk::ContextVk(const gl::State &state, gl::ErrorSet *errorSet, RendererVk 
     mDirtyBitHandlers[DIRTY_BIT_VERTEX_BUFFERS]  = &ContextVk::handleDirtyVertexBuffers;
     mDirtyBitHandlers[DIRTY_BIT_INDEX_BUFFER]    = &ContextVk::handleDirtyIndexBuffer;
     mDirtyBitHandlers[DIRTY_BIT_DRIVER_UNIFORMS] = &ContextVk::handleDirtyDriverUniforms;
+    mDirtyBitHandlers[DIRTY_BIT_UNIFORM_BUFFERS] = &ContextVk::handleDirtyUniformBuffers;
     mDirtyBitHandlers[DIRTY_BIT_DESCRIPTOR_SETS] = &ContextVk::handleDirtyDescriptorSets;
 
     mDirtyBits = mNewCommandBufferDirtyBits;
@@ -117,7 +124,7 @@ ContextVk::~ContextVk() = default;
 void ContextVk::onDestroy(const gl::Context *context)
 {
     // Force a flush on destroy.
-    (void)mRenderer->finish(this);
+    (void)finishImpl();
 
     mDriverUniformsSetLayout.reset();
     mIncompleteTextures.onDestroy(context);
@@ -155,10 +162,14 @@ angle::Result ContextVk::initialize()
     // Note that this may reserve more sets than strictly necessary for a particular layout.
     VkDescriptorPoolSize uniformSetSize = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
                                            GetUniformBufferDescriptorCount()};
+    VkDescriptorPoolSize uniformBlockSetSize = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                                mRenderer->getMaxUniformBlocks()};
     VkDescriptorPoolSize textureSetSize = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                                            mRenderer->getMaxActiveTextures()};
     VkDescriptorPoolSize driverSetSize  = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1};
     ANGLE_TRY(mDynamicDescriptorPools[kUniformsDescriptorSetIndex].init(this, &uniformSetSize, 1));
+    ANGLE_TRY(mDynamicDescriptorPools[kUniformBlockDescriptorSetIndex].init(
+        this, &uniformBlockSetSize, 1));
     ANGLE_TRY(mDynamicDescriptorPools[kTextureDescriptorSetIndex].init(this, &textureSetSize, 1));
     ANGLE_TRY(
         mDynamicDescriptorPools[kDriverUniformsDescriptorSetIndex].init(this, &driverSetSize, 1));
@@ -190,12 +201,38 @@ angle::Result ContextVk::initialize()
 
 angle::Result ContextVk::flush(const gl::Context *context)
 {
-    return mRenderer->flush(this);
+    return flushImpl();
+}
+
+angle::Result ContextVk::flushImpl()
+{
+    const vk::Semaphore *waitSemaphore   = nullptr;
+    const vk::Semaphore *signalSemaphore = nullptr;
+    if (mCurrentWindowSurface && !mRenderer->getCommandGraph()->empty())
+    {
+        ANGLE_TRY(mCurrentWindowSurface->generateSemaphoresForFlush(this, &waitSemaphore,
+                                                                    &signalSemaphore));
+    }
+
+    return mRenderer->flush(this, waitSemaphore, signalSemaphore);
 }
 
 angle::Result ContextVk::finish(const gl::Context *context)
 {
-    return mRenderer->finish(this);
+    return finishImpl();
+}
+
+angle::Result ContextVk::finishImpl()
+{
+    const vk::Semaphore *waitSemaphore   = nullptr;
+    const vk::Semaphore *signalSemaphore = nullptr;
+    if (mCurrentWindowSurface && !mRenderer->getCommandGraph()->empty())
+    {
+        ANGLE_TRY(mCurrentWindowSurface->generateSemaphoresForFlush(this, &waitSemaphore,
+                                                                    &signalSemaphore));
+    }
+
+    return mRenderer->finish(this, waitSemaphore, signalSemaphore);
 }
 
 angle::Result ContextVk::setupDraw(const gl::Context *context,
@@ -231,10 +268,13 @@ angle::Result ContextVk::setupDraw(const gl::Context *context,
     if (!mCommandBuffer)
     {
         mDirtyBits |= mNewCommandBufferDirtyBits;
+
+        gl::Rectangle scissoredRenderArea = mDrawFramebuffer->getScissoredRenderArea(this);
         if (!mDrawFramebuffer->appendToStartedRenderPass(mRenderer->getCurrentQueueSerial(),
-                                                         &mCommandBuffer))
+                                                         scissoredRenderArea, &mCommandBuffer))
         {
-            ANGLE_TRY(mDrawFramebuffer->startNewRenderPass(this, &mCommandBuffer));
+            ANGLE_TRY(
+                mDrawFramebuffer->startNewRenderPass(this, scissoredRenderArea, &mCommandBuffer));
         }
     }
 
@@ -430,6 +470,17 @@ angle::Result ContextVk::handleDirtyIndexBuffer(const gl::Context *context,
     return angle::Result::Continue;
 }
 
+angle::Result ContextVk::handleDirtyUniformBuffers(const gl::Context *context,
+                                                   vk::CommandBuffer *commandBuffer)
+{
+    if (mProgram->hasUniformBuffers())
+    {
+        ANGLE_TRY(
+            mProgram->updateUniformBuffersDescriptorSet(this, mDrawFramebuffer->getFramebuffer()));
+    }
+    return angle::Result::Continue;
+}
+
 angle::Result ContextVk::handleDirtyDescriptorSets(const gl::Context *context,
                                                    vk::CommandBuffer *commandBuffer)
 {
@@ -535,8 +586,7 @@ angle::Result ContextVk::drawRangeElements(const gl::Context *context,
                                            gl::DrawElementsType type,
                                            const void *indices)
 {
-    ANGLE_VK_UNREACHABLE(this);
-    return angle::Result::Stop;
+    return drawElements(context, mode, count, type, indices);
 }
 
 VkDevice ContextVk::getDevice() const
@@ -561,17 +611,17 @@ angle::Result ContextVk::drawElementsIndirect(const gl::Context *context,
     return angle::Result::Stop;
 }
 
-GLenum ContextVk::getResetStatus()
+gl::GraphicsResetStatus ContextVk::getResetStatus()
 {
     if (mRenderer->isDeviceLost())
     {
         // TODO(geofflang): It may be possible to track which context caused the device lost and
         // return either GL_GUILTY_CONTEXT_RESET or GL_INNOCENT_CONTEXT_RESET.
         // http://anglebug.com/2787
-        return GL_UNKNOWN_CONTEXT_RESET;
+        return gl::GraphicsResetStatus::UnknownContextReset;
     }
 
-    return GL_NO_ERROR;
+    return gl::GraphicsResetStatus::NoError;
 }
 
 std::string ContextVk::getVendorString() const
@@ -657,12 +707,35 @@ void ContextVk::updateDepthRange(float nearPlane, float farPlane)
 void ContextVk::updateScissor(const gl::State &glState)
 {
     FramebufferVk *framebufferVk = vk::GetImpl(glState.getDrawFramebuffer());
-    gl::Box dimensions           = framebufferVk->getState().getDimensions();
-    gl::Rectangle renderArea(0, 0, dimensions.width, dimensions.height);
+    gl::Rectangle renderArea     = framebufferVk->getCompleteRenderArea();
 
-    VkRect2D scissor;
-    gl_vk::GetScissor(glState, isViewportFlipEnabledForDrawFBO(), renderArea, &scissor);
-    mGraphicsPipelineDesc->updateScissor(&mGraphicsPipelineTransition, scissor);
+    // Clip the render area to the viewport.
+    gl::Rectangle viewportClippedRenderArea;
+    gl::ClipRectangle(renderArea, glState.getViewport(), &viewportClippedRenderArea);
+
+    gl::Rectangle scissoredArea = ClipRectToScissor(getState(), viewportClippedRenderArea, false);
+    if (isViewportFlipEnabledForDrawFBO())
+    {
+        scissoredArea.y = renderArea.height - scissoredArea.y - scissoredArea.height;
+    }
+
+    if (getRenderer()->getFeatures().forceNonZeroScissor && scissoredArea.width == 0 &&
+        scissoredArea.height == 0)
+    {
+        // There is no overlap between the app-set viewport and clippedRect.  This code works
+        // around an Intel driver bug that causes the driver to treat a (0,0,0,0) scissor as if
+        // scissoring is disabled.  In this case, set the scissor to be just outside of the
+        // renderArea.  Remove this work-around when driver version 25.20.100.6519 has been
+        // deployed.  http://anglebug.com/3407
+        scissoredArea.x      = renderArea.x;
+        scissoredArea.y      = renderArea.y;
+        scissoredArea.width  = 1;
+        scissoredArea.height = 1;
+    }
+    mGraphicsPipelineDesc->updateScissor(&mGraphicsPipelineTransition,
+                                         gl_vk::GetRect(scissoredArea));
+
+    framebufferVk->onScissorChange(this);
 }
 
 angle::Result ContextVk::syncState(const gl::Context *context,
@@ -689,6 +762,8 @@ angle::Result ContextVk::syncState(const gl::Context *context,
                 FramebufferVk *framebufferVk = vk::GetImpl(glState.getDrawFramebuffer());
                 updateViewport(framebufferVk, glState.getViewport(), glState.getNearPlane(),
                                glState.getFarPlane(), isViewportFlipEnabledForDrawFBO());
+                // Update the scissor, which will be constrained to the viewport
+                updateScissor(glState);
                 break;
             }
             case gl::State::DIRTY_BIT_DEPTH_RANGE:
@@ -884,6 +959,7 @@ angle::Result ContextVk::syncState(const gl::Context *context,
             case gl::State::DIRTY_BIT_PROGRAM_EXECUTABLE:
             {
                 invalidateCurrentTextures();
+                invalidateCurrentUniformBuffers();
                 // No additional work is needed here. We will update the pipeline desc later.
                 invalidateDefaultAttributes(context->getStateCache().getActiveDefaultAttribsMask());
                 bool useVertexBuffer = (mProgram->getState().getMaxActiveAttribLocation());
@@ -904,6 +980,7 @@ angle::Result ContextVk::syncState(const gl::Context *context,
             case gl::State::DIRTY_BIT_SHADER_STORAGE_BUFFER_BINDING:
                 break;
             case gl::State::DIRTY_BIT_UNIFORM_BUFFER_BINDINGS:
+                invalidateCurrentUniformBuffers();
                 break;
             case gl::State::DIRTY_BIT_ATOMIC_COUNTER_BUFFER_BINDING:
                 break;
@@ -959,10 +1036,27 @@ angle::Result ContextVk::onMakeCurrent(const gl::Context *context)
         drawSurface != nullptr && mRenderer->getFeatures().flipViewportY &&
         !IsMaskFlagSet(drawSurface->getOrientation(), EGL_SURFACE_ORIENTATION_INVERT_Y_ANGLE);
 
+    if (drawSurface && drawSurface->getType() == EGL_WINDOW_BIT)
+    {
+        mCurrentWindowSurface = GetImplAs<WindowSurfaceVk>(drawSurface);
+    }
+    else
+    {
+        mCurrentWindowSurface = nullptr;
+    }
+
     const gl::State &glState = context->getState();
     updateFlipViewportDrawFramebuffer(glState);
     updateFlipViewportReadFramebuffer(glState);
     invalidateDriverUniforms();
+
+    return angle::Result::Continue;
+}
+
+angle::Result ContextVk::onUnMakeCurrent(const gl::Context *context)
+{
+    ANGLE_TRY(flushImpl());
+    mCurrentWindowSurface = nullptr;
     return angle::Result::Continue;
 }
 
@@ -1075,12 +1169,27 @@ std::vector<PathImpl *> ContextVk::createPaths(GLsizei)
     return std::vector<PathImpl *>();
 }
 
+MemoryObjectImpl *ContextVk::createMemoryObject()
+{
+    return new MemoryObjectVk();
+}
+
 void ContextVk::invalidateCurrentTextures()
 {
     ASSERT(mProgram);
     if (mProgram->hasTextures())
     {
         mDirtyBits.set(DIRTY_BIT_TEXTURES);
+        mDirtyBits.set(DIRTY_BIT_DESCRIPTOR_SETS);
+    }
+}
+
+void ContextVk::invalidateCurrentUniformBuffers()
+{
+    ASSERT(mProgram);
+    if (mProgram->hasUniformBuffers())
+    {
+        mDirtyBits.set(DIRTY_BIT_UNIFORM_BUFFERS);
         mDirtyBits.set(DIRTY_BIT_DESCRIPTOR_SETS);
     }
 }
@@ -1309,10 +1418,7 @@ angle::Result ContextVk::updateDefaultAttribute(size_t attribIndex)
     const gl::State &glState = mState;
     const gl::VertexAttribCurrentValueData &defaultValue =
         glState.getVertexAttribCurrentValues()[attribIndex];
-
-    ASSERT(defaultValue.Type == gl::VertexAttribType::Float);
-
-    memcpy(ptr, defaultValue.FloatValues, kDefaultValueSize);
+    memcpy(ptr, &defaultValue.Values, kDefaultValueSize);
 
     ANGLE_TRY(defaultBuffer.flush(this));
 

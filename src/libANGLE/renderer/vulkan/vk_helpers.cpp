@@ -12,6 +12,7 @@
 #include "libANGLE/Context.h"
 #include "libANGLE/renderer/vulkan/BufferVk.h"
 #include "libANGLE/renderer/vulkan/ContextVk.h"
+#include "libANGLE/renderer/vulkan/DisplayVk.h"
 #include "libANGLE/renderer/vulkan/FramebufferVk.h"
 #include "libANGLE/renderer/vulkan/RendererVk.h"
 #include "libANGLE/renderer/vulkan/vk_utils.h"
@@ -23,6 +24,14 @@ namespace vk
 {
 namespace
 {
+// WebGL requires color textures to be initialized to transparent black.
+constexpr VkClearColorValue kWebGLInitColorValue = {{0, 0, 0, 0}};
+// When emulating a texture, we want the emulated channels to be 0, with alpha 1.
+constexpr VkClearColorValue kEmulatedInitColorValue = {{0, 0, 0, 1.0f}};
+// WebGL requires depth/stencil textures to be initialized to depth=1, stencil=0.  We are fine with
+// these values for emulated depth/stencil textures too.
+constexpr VkClearDepthStencilValue kWebGLInitDepthStencilValue = {1.0f, 0};
+
 constexpr VkBufferUsageFlags kLineLoopDynamicBufferUsage =
     VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
     VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
@@ -367,6 +376,21 @@ void DynamicBuffer::release(RendererVk *renderer)
     }
 }
 
+void DynamicBuffer::release(DisplayVk *display, std::vector<GarbageObjectBase> *garbageQueue)
+{
+    reset();
+    releaseRetainedBuffers(display, garbageQueue);
+
+    if (mBuffer)
+    {
+        mBuffer->unmap(display->getDevice());
+
+        mBuffer->release(display, garbageQueue);
+        delete mBuffer;
+        mBuffer = nullptr;
+    }
+}
+
 void DynamicBuffer::releaseRetainedBuffers(RendererVk *renderer)
 {
     for (BufferHelper *toFree : mRetainedBuffers)
@@ -374,6 +398,18 @@ void DynamicBuffer::releaseRetainedBuffers(RendererVk *renderer)
         // See note in release().
         toFree->updateQueueSerial(renderer->getCurrentQueueSerial());
         toFree->release(renderer);
+        delete toFree;
+    }
+
+    mRetainedBuffers.clear();
+}
+
+void DynamicBuffer::releaseRetainedBuffers(DisplayVk *display,
+                                           std::vector<GarbageObjectBase> *garbageQueue)
+{
+    for (BufferHelper *toFree : mRetainedBuffers)
+    {
+        toFree->release(display, garbageQueue);
         delete toFree;
     }
 
@@ -970,7 +1006,7 @@ angle::Result LineLoopHelper::getIndexBufferForElementArrayBuffer(ContextVk *con
     {
         TRACE_EVENT0("gpu.angle", "LineLoopHelper::getIndexBufferForElementArrayBuffer");
         // Needed before reading buffer or we could get stale data.
-        ANGLE_TRY(contextVk->getRenderer()->finish(contextVk));
+        ANGLE_TRY(contextVk->finishImpl());
 
         void *srcDataMapping = nullptr;
         ANGLE_TRY(elementArrayBufferVk->mapImpl(contextVk, &srcDataMapping));
@@ -1112,7 +1148,18 @@ void BufferHelper::release(RendererVk *renderer)
     renderer->releaseObject(getStoredQueueSerial(), &mDeviceMemory);
 }
 
-void BufferHelper::onWrite(VkAccessFlagBits writeAccessType)
+void BufferHelper::release(DisplayVk *display, std::vector<GarbageObjectBase> *garbageQueue)
+{
+    unmap(display->getDevice());
+    mSize       = 0;
+    mViewFormat = nullptr;
+
+    mBuffer.dumpResources(garbageQueue);
+    mBufferView.dumpResources(garbageQueue);
+    mDeviceMemory.dumpResources(garbageQueue);
+}
+
+void BufferHelper::onWrite(VkAccessFlags writeAccessType)
 {
     if (mCurrentReadAccess != 0 || mCurrentWriteAccess != 0)
     {
@@ -1125,19 +1172,20 @@ void BufferHelper::onWrite(VkAccessFlagBits writeAccessType)
 
 angle::Result BufferHelper::copyFromBuffer(Context *context,
                                            const Buffer &buffer,
+                                           VkAccessFlags bufferAccessType,
                                            const VkBufferCopy &copyRegion)
 {
     // 'recordCommands' will implicitly stop any reads from using the old buffer data.
     vk::CommandBuffer *commandBuffer = nullptr;
     ANGLE_TRY(recordCommands(context, &commandBuffer));
 
-    if (mCurrentReadAccess != 0 || mCurrentWriteAccess != 0)
+    if (mCurrentReadAccess != 0 || mCurrentWriteAccess != 0 || bufferAccessType != 0)
     {
         // Insert a barrier to ensure reads/writes are complete.
         // Use a global memory barrier to keep things simple.
         VkMemoryBarrier memoryBarrier = {};
         memoryBarrier.sType           = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        memoryBarrier.srcAccessMask   = mCurrentReadAccess | mCurrentWriteAccess;
+        memoryBarrier.srcAccessMask   = mCurrentReadAccess | mCurrentWriteAccess | bufferAccessType;
         memoryBarrier.dstAccessMask   = VK_ACCESS_TRANSFER_WRITE_BIT;
 
         commandBuffer->pipelineBarrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -1257,6 +1305,7 @@ ImageHelper::ImageHelper(ImageHelper &&other)
       mStagingBuffer(std::move(other.mStagingBuffer)),
       mSubresourceUpdates(std::move(other.mSubresourceUpdates))
 {
+    ASSERT(this != &other);
     other.mCurrentLayout = ImageLayout::Undefined;
     other.mLayerCount    = 0;
     other.mLevelCount    = 0;
@@ -1315,7 +1364,7 @@ angle::Result ImageHelper::initExternal(Context *context,
     imageInfo.pNext                 = externalImageCreateInfo;
     imageInfo.flags                 = GetImageCreateFlags(textureType);
     imageInfo.imageType             = gl_vk::GetImageType(textureType);
-    imageInfo.format                = format.vkTextureFormat;
+    imageInfo.format                = format.vkImageFormat;
     imageInfo.extent.width          = static_cast<uint32_t>(extents.width);
     imageInfo.extent.height         = static_cast<uint32_t>(extents.height);
     imageInfo.extent.depth          = 1;
@@ -1342,6 +1391,12 @@ void ImageHelper::releaseImage(RendererVk *renderer)
     renderer->releaseObject(getStoredQueueSerial(), &mDeviceMemory);
 }
 
+void ImageHelper::releaseImage(DisplayVk *display, std::vector<GarbageObjectBase> *garbageQueue)
+{
+    mImage.dumpResources(garbageQueue);
+    mDeviceMemory.dumpResources(garbageQueue);
+}
+
 void ImageHelper::releaseStagingBuffer(RendererVk *renderer)
 {
     // Remove updates that never made it to the texture.
@@ -1350,6 +1405,18 @@ void ImageHelper::releaseStagingBuffer(RendererVk *renderer)
         update.release(renderer);
     }
     mStagingBuffer.release(renderer);
+    mSubresourceUpdates.clear();
+}
+
+void ImageHelper::releaseStagingBuffer(DisplayVk *display,
+                                       std::vector<GarbageObjectBase> *garbageQueue)
+{
+    // Remove updates that never made it to the texture.
+    for (SubresourceUpdate &update : mSubresourceUpdates)
+    {
+        update.release(display, garbageQueue);
+    }
+    mStagingBuffer.release(display, garbageQueue);
     mSubresourceUpdates.clear();
 }
 
@@ -1410,7 +1477,7 @@ angle::Result ImageHelper::initLayerImageView(Context *context,
     viewInfo.flags                 = 0;
     viewInfo.image                 = mImage.getHandle();
     viewInfo.viewType              = gl_vk::GetImageViewType(textureType);
-    viewInfo.format                = mFormat->vkTextureFormat;
+    viewInfo.format                = mFormat->vkImageFormat;
     if (swizzleMap.swizzleRequired())
     {
         viewInfo.components.r = gl_vk::GetSwizzle(swizzleMap.swizzleRed);
@@ -1482,7 +1549,7 @@ angle::Result ImageHelper::init2DStaging(Context *context,
     imageInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.flags                 = 0;
     imageInfo.imageType             = VK_IMAGE_TYPE_2D;
-    imageInfo.format                = format.vkTextureFormat;
+    imageInfo.format                = format.vkImageFormat;
     imageInfo.extent.width          = static_cast<uint32_t>(extents.width);
     imageInfo.extent.height         = static_cast<uint32_t>(extents.height);
     imageInfo.extent.depth          = 1;
@@ -1507,38 +1574,13 @@ angle::Result ImageHelper::init2DStaging(Context *context,
 
 VkImageAspectFlags ImageHelper::getAspectFlags() const
 {
-    return GetFormatAspectFlags(mFormat->textureFormat());
+    return GetFormatAspectFlags(mFormat->imageFormat());
 }
 
 void ImageHelper::dumpResources(Serial serial, std::vector<GarbageObject> *garbageQueue)
 {
     mImage.dumpResources(serial, garbageQueue);
     mDeviceMemory.dumpResources(serial, garbageQueue);
-}
-
-const Image &ImageHelper::getImage() const
-{
-    return mImage;
-}
-
-const DeviceMemory &ImageHelper::getDeviceMemory() const
-{
-    return mDeviceMemory;
-}
-
-const gl::Extents &ImageHelper::getExtents() const
-{
-    return mExtents;
-}
-
-const Format &ImageHelper::getFormat() const
-{
-    return *mFormat;
-}
-
-GLint ImageHelper::getSamples() const
-{
-    return mSamples;
 }
 
 VkImageLayout ImageHelper::getCurrentLayout() const
@@ -1620,17 +1662,9 @@ void ImageHelper::forceChangeLayoutAndQueue(VkImageAspectFlags aspectMask,
 void ImageHelper::clearColor(const VkClearColorValue &color,
                              uint32_t baseMipLevel,
                              uint32_t levelCount,
+                             uint32_t baseArrayLayer,
+                             uint32_t layerCount,
                              vk::CommandBuffer *commandBuffer)
-{
-    clearColorLayer(color, baseMipLevel, levelCount, 0, mLayerCount, commandBuffer);
-}
-
-void ImageHelper::clearColorLayer(const VkClearColorValue &color,
-                                  uint32_t baseMipLevel,
-                                  uint32_t levelCount,
-                                  uint32_t baseArrayLayer,
-                                  uint32_t layerCount,
-                                  vk::CommandBuffer *commandBuffer)
 {
     ASSERT(valid());
 
@@ -1664,6 +1698,27 @@ void ImageHelper::clearDepthStencil(VkImageAspectFlags imageAspectFlags,
     };
 
     commandBuffer->clearDepthStencilImage(mImage, getCurrentLayout(), depthStencil, 1, &clearRange);
+}
+
+void ImageHelper::clear(const VkClearValue &value,
+                        uint32_t mipLevel,
+                        uint32_t baseArrayLayer,
+                        uint32_t layerCount,
+                        vk::CommandBuffer *commandBuffer)
+{
+    const angle::Format &angleFormat = mFormat->angleFormat();
+    bool isDepthStencil              = angleFormat.depthBits > 0 || angleFormat.stencilBits > 0;
+
+    if (isDepthStencil)
+    {
+        ASSERT(mipLevel == 0 && baseArrayLayer == 0 && layerCount == 1);
+        const VkImageAspectFlags aspect = vk::GetDepthStencilAspectFlags(mFormat->imageFormat());
+        clearDepthStencil(aspect, aspect, value.depthStencil, commandBuffer);
+    }
+    else
+    {
+        clearColor(value.color, mipLevel, 1, baseArrayLayer, layerCount, commandBuffer);
+    }
 }
 
 gl::Extents ImageHelper::getSize(const gl::ImageIndex &index) const
@@ -1811,7 +1866,8 @@ angle::Result ImageHelper::stageSubresourceUpdate(ContextVk *contextVk,
                                                   const gl::InternalFormat &formatInfo,
                                                   const gl::PixelUnpackState &unpack,
                                                   GLenum type,
-                                                  const uint8_t *pixels)
+                                                  const uint8_t *pixels,
+                                                  const vk::Format &vkFormat)
 {
     GLuint inputRowPitch = 0;
     ANGLE_VK_CHECK_MATH(contextVk, formatInfo.computeRowPitch(type, extents.width, unpack.alignment,
@@ -1830,10 +1886,7 @@ angle::Result ImageHelper::stageSubresourceUpdate(ContextVk *contextVk,
                         formatInfo.computeSkipBytes(type, inputRowPitch, inputDepthPitch, unpack,
                                                     applySkipImages, &inputSkipBytes));
 
-    RendererVk *renderer = contextVk->getRenderer();
-
-    const vk::Format &vkFormat         = renderer->getFormat(formatInfo.sizedInternalFormat);
-    const angle::Format &storageFormat = vkFormat.textureFormat();
+    const angle::Format &storageFormat = vkFormat.imageFormat();
 
     size_t outputRowPitch;
     size_t outputDepthPitch;
@@ -1868,13 +1921,13 @@ angle::Result ImageHelper::stageSubresourceUpdate(ContextVk *contextVk,
     }
     else
     {
+        ASSERT(storageFormat.pixelBytes != 0);
+
         outputRowPitch   = storageFormat.pixelBytes * extents.width;
         outputDepthPitch = outputRowPitch * extents.height;
 
         bufferRowLength   = extents.width;
         bufferImageHeight = extents.height;
-
-        ASSERT(storageFormat.pixelBytes != 0);
     }
 
     VkBuffer bufferHandle = VK_NULL_HANDLE;
@@ -1970,7 +2023,7 @@ angle::Result ImageHelper::stageSubresourceUpdateFromFramebuffer(
     RendererVk *renderer = contextVk->getRenderer();
 
     const vk::Format &vkFormat         = renderer->getFormat(formatInfo.sizedInternalFormat);
-    const angle::Format &storageFormat = vkFormat.textureFormat();
+    const angle::Format &storageFormat = vkFormat.imageFormat();
     LoadImageFunctionInfo loadFunction = vkFormat.textureLoadFunctions(formatInfo.type);
 
     size_t outputRowPitch   = storageFormat.pixelBytes * clippedRectangle.width;
@@ -2054,6 +2107,53 @@ void ImageHelper::stageSubresourceUpdateFromImage(vk::ImageHelper *image,
     mSubresourceUpdates.emplace_back(image, copyToImage);
 }
 
+void ImageHelper::stageSubresourceRobustClear(const gl::ImageIndex &index,
+                                              const angle::Format &format)
+{
+    stageSubresourceClear(index, format, kWebGLInitColorValue, kWebGLInitDepthStencilValue);
+}
+
+void ImageHelper::stageSubresourceEmulatedClear(const gl::ImageIndex &index,
+                                                const angle::Format &format)
+{
+    stageSubresourceClear(index, format, kEmulatedInitColorValue, kWebGLInitDepthStencilValue);
+}
+
+angle::Result ImageHelper::clearIfEmulatedFormat(Context *context,
+                                                 const gl::ImageIndex &index,
+                                                 const Format &format)
+{
+    if (format.hasEmulatedImageChannels())
+    {
+        stageSubresourceEmulatedClear(index, format.angleFormat());
+        ANGLE_TRY(flushAllStagedUpdates(context));
+    }
+
+    return angle::Result::Continue;
+}
+
+void ImageHelper::stageSubresourceClear(const gl::ImageIndex &index,
+                                        const angle::Format &format,
+                                        const VkClearColorValue &colorValue,
+                                        const VkClearDepthStencilValue &depthStencilValue)
+{
+    VkClearValue clearValue;
+
+    bool isDepthStencil = format.depthBits > 0 || format.stencilBits > 0;
+    if (isDepthStencil)
+    {
+        clearValue.depthStencil = depthStencilValue;
+    }
+    else
+    {
+        clearValue.color = colorValue;
+    }
+
+    // Note that clears can arrive out of order from the front-end with respect to staged changes,
+    // but they are intended to be done first.
+    mSubresourceUpdates.emplace(mSubresourceUpdates.begin(), clearValue, index);
+}
+
 angle::Result ImageHelper::allocateStagingMemory(ContextVk *contextVk,
                                                  size_t sizeInBytes,
                                                  uint8_t **ptrOut,
@@ -2066,8 +2166,10 @@ angle::Result ImageHelper::allocateStagingMemory(ContextVk *contextVk,
 }
 
 angle::Result ImageHelper::flushStagedUpdates(Context *context,
-                                              uint32_t baseLevel,
-                                              uint32_t levelCount,
+                                              uint32_t levelStart,
+                                              uint32_t levelEnd,
+                                              uint32_t layerStart,
+                                              uint32_t layerEnd,
                                               vk::CommandBuffer *commandBuffer)
 {
     if (mSubresourceUpdates.empty())
@@ -2080,40 +2182,69 @@ angle::Result ImageHelper::flushStagedUpdates(Context *context,
     ANGLE_TRY(mStagingBuffer.flush(context));
 
     std::vector<SubresourceUpdate> updatesToKeep;
+    const VkImageAspectFlags aspectFlags = GetFormatAspectFlags(mFormat->imageFormat());
 
     for (SubresourceUpdate &update : mSubresourceUpdates)
     {
-        ASSERT((update.updateSource == SubresourceUpdate::UpdateSource::Buffer &&
+        ASSERT(update.updateSource == SubresourceUpdate::UpdateSource::Clear ||
+               (update.updateSource == SubresourceUpdate::UpdateSource::Buffer &&
                 update.buffer.bufferHandle != VK_NULL_HANDLE) ||
                (update.updateSource == SubresourceUpdate::UpdateSource::Image &&
                 update.image.image != nullptr && update.image.image->valid()));
 
-        const uint32_t updateMipLevel = update.dstSubresource().mipLevel;
+        uint32_t updateMipLevel;
+        uint32_t updateBaseLayer;
+        uint32_t updateLayerCount;
+        if (update.updateSource == SubresourceUpdate::UpdateSource::Clear)
+        {
+            updateMipLevel   = update.clear.levelIndex;
+            updateBaseLayer  = update.clear.layerIndex;
+            updateLayerCount = update.clear.layerCount;
+            if (updateLayerCount == static_cast<uint32_t>(gl::ImageIndex::kEntireLevel))
+            {
+                updateLayerCount = mLayerCount;
+            }
+        }
+        else
+        {
+            const VkImageSubresourceLayers &dstSubresource = update.dstSubresource();
+            updateMipLevel                                 = dstSubresource.mipLevel;
+            updateBaseLayer                                = dstSubresource.baseArrayLayer;
+            updateLayerCount                               = dstSubresource.layerCount;
+        }
 
-        // It's possible we've accumulated updates that are no longer applicable if the image has
-        // never been flushed but the image description has changed. Check if this level exist for
-        // this image.
-        if (updateMipLevel < baseLevel || updateMipLevel >= baseLevel + levelCount)
+        // If the update level is not within the requested range, skip the update.
+        const bool isUpdateLevelOutsideRange =
+            updateMipLevel < levelStart || updateMipLevel >= levelEnd;
+        // If the update layers don't intersect the requested layers, skip the update.
+        const bool areUpdateLayersOutsideRange =
+            updateBaseLayer + updateLayerCount <= layerStart || updateBaseLayer >= layerEnd;
+
+        if (isUpdateLevelOutsideRange || areUpdateLayersOutsideRange)
         {
             updatesToKeep.emplace_back(update);
             continue;
         }
 
-        // Conservatively flush all writes to the image. We could use a more restricted barrier.
-        // Do not move this above the for loop, otherwise multiple updates can have race conditions
-        // and not be applied correctly as seen in:
-        // dEQP-gles2.functional_texture_specification_texsubimage2d_align_2d* tests on Windows AMD
-        changeLayout(VK_IMAGE_ASPECT_COLOR_BIT, vk::ImageLayout::TransferDst, commandBuffer);
+        // Conservatively add a barrier between every update.  This is to avoid races when updating
+        // the same subresource.  A possible optimization could be to only issue this barrier when
+        // an overlap in updates is observed.
+        changeLayout(aspectFlags, vk::ImageLayout::TransferDst, commandBuffer);
 
-        if (update.updateSource == SubresourceUpdate::UpdateSource::Buffer)
+        if (update.updateSource == SubresourceUpdate::UpdateSource::Clear)
+        {
+            clear(update.clear.value, updateMipLevel, updateBaseLayer, updateLayerCount,
+                  commandBuffer);
+        }
+        else if (update.updateSource == SubresourceUpdate::UpdateSource::Buffer)
         {
             commandBuffer->copyBufferToImage(update.buffer.bufferHandle, mImage, getCurrentLayout(),
                                              1, &update.buffer.copyRegion);
         }
         else
         {
-            update.image.image->changeLayout(VK_IMAGE_ASPECT_COLOR_BIT,
-                                             vk::ImageLayout::TransferSrc, commandBuffer);
+            update.image.image->changeLayout(aspectFlags, vk::ImageLayout::TransferSrc,
+                                             commandBuffer);
 
             update.image.image->addReadDependency(this);
 
@@ -2132,18 +2263,16 @@ angle::Result ImageHelper::flushStagedUpdates(Context *context,
     {
         mStagingBuffer.releaseRetainedBuffers(context->getRenderer());
     }
-    else
-    {
-        WARN() << "Internal Vulkan buffer could not be released. This is likely due to having "
-                  "extra images defined in the Texture.";
-    }
 
     return angle::Result::Continue;
 }
 
-bool ImageHelper::hasStagedUpdates() const
+angle::Result ImageHelper::flushAllStagedUpdates(Context *context)
 {
-    return !mSubresourceUpdates.empty();
+    // Clear the image.
+    vk::CommandBuffer *commandBuffer = nullptr;
+    ANGLE_TRY(recordCommands(context, &commandBuffer));
+    return flushStagedUpdates(context, 0, mLevelCount, 0, mLayerCount, commandBuffer);
 }
 
 // ImageHelper::SubresourceUpdate implementation
@@ -2161,10 +2290,24 @@ ImageHelper::SubresourceUpdate::SubresourceUpdate(vk::ImageHelper *imageIn,
     : updateSource(UpdateSource::Image), image{imageIn, copyRegionIn}
 {}
 
+ImageHelper::SubresourceUpdate::SubresourceUpdate(const VkClearValue &clearValue,
+                                                  const gl::ImageIndex &imageIndex)
+    : updateSource(UpdateSource::Clear)
+{
+    clear.value      = clearValue;
+    clear.levelIndex = imageIndex.getLevelIndex();
+    clear.layerIndex = imageIndex.hasLayer() ? imageIndex.getLayerIndex() : 0;
+    clear.layerCount = imageIndex.getLayerCount();
+}
+
 ImageHelper::SubresourceUpdate::SubresourceUpdate(const SubresourceUpdate &other)
     : updateSource(other.updateSource)
 {
-    if (updateSource == UpdateSource::Buffer)
+    if (updateSource == UpdateSource::Clear)
+    {
+        clear = other.clear;
+    }
+    else if (updateSource == UpdateSource::Buffer)
     {
         buffer = other.buffer;
     }
@@ -2184,9 +2327,25 @@ void ImageHelper::SubresourceUpdate::release(RendererVk *renderer)
     }
 }
 
+void ImageHelper::SubresourceUpdate::release(DisplayVk *display,
+                                             std::vector<GarbageObjectBase> *garbageQueue)
+{
+    if (updateSource == UpdateSource::Image)
+    {
+        image.image->releaseImage(display, garbageQueue);
+        image.image->releaseStagingBuffer(display, garbageQueue);
+        SafeDelete(image.image);
+    }
+}
+
 bool ImageHelper::SubresourceUpdate::isUpdateToLayerLevel(uint32_t layerIndex,
                                                           uint32_t levelIndex) const
 {
+    if (updateSource == UpdateSource::Clear)
+    {
+        return clear.levelIndex == levelIndex && clear.layerIndex == layerIndex;
+    }
+
     const VkImageSubresourceLayers &dst = dstSubresource();
     return dst.baseArrayLayer == layerIndex && dst.mipLevel == levelIndex;
 }

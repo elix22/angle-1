@@ -31,6 +31,14 @@ void FenceSyncVk::onDestroy(RendererVk *renderer)
     mFence.reset(renderer->getDevice());
 }
 
+void FenceSyncVk::onDestroy(DisplayVk *display)
+{
+    std::vector<vk::GarbageObjectBase> garbage;
+    mEvent.dumpResources(&garbage);
+
+    display->getRenderer()->addGarbage(std::move(mFence), std::move(garbage));
+}
+
 angle::Result FenceSyncVk::initialize(ContextVk *contextVk)
 {
     ASSERT(!mEvent.valid());
@@ -79,7 +87,7 @@ angle::Result FenceSyncVk::clientWait(vk::Context *context,
 
     if (flushCommands && contextVk)
     {
-        ANGLE_TRY(contextVk->getRenderer()->flush(contextVk));
+        ANGLE_TRY(contextVk->flushImpl());
     }
 
     // Wait on the fence that's expected to be signaled on the first vkQueueSubmit after

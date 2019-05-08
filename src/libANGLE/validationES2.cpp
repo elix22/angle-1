@@ -1203,7 +1203,7 @@ bool ValidateES2TexImageParameters(Context *context,
             return false;
     }
 
-    gl::Texture *texture = context->getTargetTexture(texType);
+    gl::Texture *texture = context->getTextureByType(texType);
     if (!texture)
     {
         context->validationError(GL_INVALID_OPERATION, kBufferNotBound);
@@ -1646,12 +1646,18 @@ bool ValidateES2TexImageParameters(Context *context,
             return false;
         }
 
-        if (format != GL_NONE)
+        if (format != textureInternalFormat.format)
+        {
+            context->validationError(GL_INVALID_OPERATION, err::kTextureFormatMismatch);
+            return false;
+        }
+
+        if (context->getExtensions().webglCompatibility)
         {
             if (GetInternalFormatInfo(format, type).sizedInternalFormat !=
                 textureInternalFormat.sizedInternalFormat)
             {
-                context->validationError(GL_INVALID_OPERATION, kTypeMismatch);
+                context->validationError(GL_INVALID_OPERATION, kTextureTypeMismatch);
                 return false;
             }
         }
@@ -1899,7 +1905,7 @@ bool ValidateES2TexStorageParameters(Context *context,
             break;
     }
 
-    gl::Texture *texture = context->getTargetTexture(target);
+    gl::Texture *texture = context->getTextureByType(target);
     if (!texture || texture->id() == 0)
     {
         context->validationError(GL_INVALID_OPERATION, kMissingTexture);
@@ -2683,7 +2689,7 @@ bool ValidateClear(Context *context, GLbitfield mask)
         }
     }
 
-    if (extensions.multiview && extensions.disjointTimerQuery)
+    if (extensions.multiview2 && extensions.disjointTimerQuery)
     {
         const State &state       = context->getState();
         Framebuffer *framebuffer = state.getDrawFramebuffer();
@@ -3031,6 +3037,296 @@ bool ValidateMapBufferRangeEXT(Context *context,
     }
 
     return ValidateMapBufferRangeBase(context, target, offset, length, access);
+}
+
+bool ValidateBufferStorageMemEXT(Context *context,
+                                 TextureType target,
+                                 GLsizeiptr size,
+                                 GLuint memory,
+                                 GLuint64 offset)
+{
+    if (!context->getExtensions().memoryObject)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateCreateMemoryObjectsEXT(Context *context, GLsizei n, GLuint *memoryObjects)
+{
+    if (!context->getExtensions().memoryObject)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    return ValidateGenOrDelete(context, n);
+}
+
+bool ValidateDeleteMemoryObjectsEXT(Context *context, GLsizei n, const GLuint *memoryObjects)
+{
+    if (!context->getExtensions().memoryObject)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    return ValidateGenOrDelete(context, n);
+}
+
+bool ValidateGetMemoryObjectParameterivEXT(Context *context,
+                                           GLuint memoryObject,
+                                           GLenum pname,
+                                           GLint *params)
+{
+    if (!context->getExtensions().memoryObject)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateGetUnsignedBytevEXT(Context *context, GLenum pname, GLubyte *data)
+{
+    if (!context->getExtensions().memoryObject && !context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateGetUnsignedBytei_vEXT(Context *context, GLenum target, GLuint index, GLubyte *data)
+{
+    if (!context->getExtensions().memoryObject && !context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateIsMemoryObjectEXT(Context *context, GLuint memoryObject)
+{
+    if (!context->getExtensions().memoryObject)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateMemoryObjectParameterivEXT(Context *context,
+                                        GLuint memoryObject,
+                                        GLenum pname,
+                                        const GLint *params)
+{
+    if (!context->getExtensions().memoryObject)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateTexStorageMem2DEXT(Context *context,
+                                TextureType target,
+                                GLsizei levels,
+                                GLenum internalFormat,
+                                GLsizei width,
+                                GLsizei height,
+                                GLuint memory,
+                                GLuint64 offset)
+{
+    if (!context->getExtensions().memoryObject)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    if (context->getClientMajorVersion() < 3)
+    {
+        return ValidateES2TexStorageParameters(context, target, levels, internalFormat, width,
+                                               height);
+    }
+
+    ASSERT(context->getClientMajorVersion() >= 3);
+    return ValidateES3TexStorage2DParameters(context, target, levels, internalFormat, width, height,
+                                             1);
+}
+
+bool ValidateTexStorageMem3DEXT(Context *context,
+                                TextureType target,
+                                GLsizei levels,
+                                GLenum internalFormat,
+                                GLsizei width,
+                                GLsizei height,
+                                GLsizei depth,
+                                GLuint memory,
+                                GLuint64 offset)
+{
+    if (!context->getExtensions().memoryObject)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateImportMemoryFdEXT(Context *context,
+                               GLuint memory,
+                               GLuint64 size,
+                               HandleType handleType,
+                               GLint fd)
+{
+    if (!context->getExtensions().memoryObjectFd)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    switch (handleType)
+    {
+        case HandleType::OpaqueFd:
+            break;
+        default:
+            context->validationError(GL_INVALID_ENUM, kInvalidHandleType);
+            return false;
+    }
+
+    return true;
+}
+
+bool ValidateDeleteSemaphoresEXT(Context *context, GLsizei n, const GLuint *semaphores)
+{
+    if (!context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateGenSemaphoresEXT(Context *context, GLsizei n, GLuint *semaphores)
+{
+    if (!context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateGetSemaphoreParameterui64vEXT(Context *context,
+                                           GLuint semaphore,
+                                           GLenum pname,
+                                           GLuint64 *params)
+{
+    if (!context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateIsSemaphoreEXT(Context *context, GLuint semaphore)
+{
+    if (!context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateSemaphoreParameterui64vEXT(Context *context,
+                                        GLuint semaphore,
+                                        GLenum pname,
+                                        const GLuint64 *params)
+{
+    if (!context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateSignalSemaphoreEXT(Context *context,
+                                GLuint semaphore,
+                                GLuint numBufferBarriers,
+                                const GLuint *buffers,
+                                GLuint numTextureBarriers,
+                                const GLuint *textures,
+                                const GLenum *dstLayouts)
+{
+    if (!context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateWaitSemaphoreEXT(Context *context,
+                              GLuint semaphore,
+                              GLuint numBufferBarriers,
+                              const GLuint *buffers,
+                              GLuint numTextureBarriers,
+                              const GLuint *textures,
+                              const GLenum *srcLayouts)
+{
+    if (!context->getExtensions().semaphore)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
+}
+
+bool ValidateImportSemaphoreFdEXT(Context *context,
+                                  GLuint semaphore,
+                                  HandleType handleType,
+                                  GLint fd)
+{
+    if (!context->getExtensions().semaphoreFd)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    UNIMPLEMENTED();
+    return false;
 }
 
 bool ValidateMapBufferBase(Context *context, BufferBinding target)
@@ -5947,7 +6243,7 @@ bool ValidateGenerateMipmap(Context *context, TextureType target)
         return false;
     }
 
-    Texture *texture = context->getTargetTexture(target);
+    Texture *texture = context->getTextureByType(target);
 
     if (texture == nullptr)
     {

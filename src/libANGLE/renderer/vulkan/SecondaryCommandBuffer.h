@@ -178,6 +178,7 @@ struct PushConstantsParams
 {
     VkPipelineLayout layout;
     VkShaderStageFlags flag;
+    uint32_t offset;
     uint32_t size;
 };
 VERIFY_4_BYTE_ALIGNMENT(PushConstantsParams)
@@ -329,6 +330,10 @@ class SecondaryCommandBuffer final : angle::NonCopyable
     ~SecondaryCommandBuffer();
 
     static bool SupportsQueries(const VkPhysicalDeviceFeatures &features) { return true; }
+
+    // SecondaryCommandBuffer replays its commands inline when executed on the primary command
+    // buffer.
+    static constexpr bool ExecutesInline() { return true; }
 
     // Add commands
     void beginQuery(VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags);
@@ -488,6 +493,8 @@ class SecondaryCommandBuffer final : angle::NonCopyable
     void releaseHandle() { mAllocator = nullptr; }
     // The SecondaryCommandBuffer is valid if it's been initialized
     bool valid() const { return mAllocator != nullptr; }
+
+    bool empty() const { return mCommands.size() == 0 || mCommands[0]->id == CommandID::Invalid; }
 
   private:
     template <class StructType>
@@ -898,12 +905,12 @@ ANGLE_INLINE void SecondaryCommandBuffer::pushConstants(const PipelineLayout &la
                                                         const void *data)
 {
     ASSERT(size == static_cast<size_t>(size));
-    ASSERT(offset == 0);
     uint8_t *writePtr;
     PushConstantsParams *paramStruct = initCommand<PushConstantsParams>(
         CommandID::PushConstants, static_cast<size_t>(size), &writePtr);
     paramStruct->layout = layout.getHandle();
     paramStruct->flag   = flag;
+    paramStruct->offset = offset;
     paramStruct->size   = size;
     // Copy variable sized data
     storePointerParameter(writePtr, data, static_cast<size_t>(size));

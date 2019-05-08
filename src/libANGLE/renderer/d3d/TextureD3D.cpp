@@ -184,6 +184,18 @@ angle::Result TextureD3D::setStorageMultisample(const gl::Context *context,
     return angle::Result::Continue;
 }
 
+angle::Result TextureD3D::setStorageExternalMemory(const gl::Context *context,
+                                                   gl::TextureType type,
+                                                   size_t levels,
+                                                   GLenum internalFormat,
+                                                   const gl::Extents &size,
+                                                   gl::MemoryObject *memoryObject,
+                                                   GLuint64 offset)
+{
+    ANGLE_HR_UNREACHABLE(GetImplAs<ContextD3D>(context));
+    return angle::Result::Continue;
+}
+
 bool TextureD3D::shouldUseSetData(const ImageD3D *image) const
 {
     if (!mRenderer->getWorkarounds().setDataFasterThanImageUpload)
@@ -569,6 +581,9 @@ angle::Result TextureD3D::ensureRenderTarget(const gl::Context *context)
             ANGLE_TRY(mTexStorage->copyToStorage(context, newRenderTargetStorage.get()));
             ANGLE_TRY(setCompleteTexStorage(context, newRenderTargetStorage.get()));
             newRenderTargetStorage.release();
+            // If this texture is used in compute shader, we should invalidate this texture so that
+            // the UAV/SRV is rebound again with this new texture storage in next dispatch call.
+            mTexStorage->invalidateTextures();
         }
     }
 
@@ -2163,14 +2178,6 @@ bool TextureD3D_Cube::isFaceLevelComplete(int faceIndex, int level) const
     if (levelZeroSize <= 0)
     {
         return false;
-    }
-
-    // "isCubeComplete" checks for base level completeness and we must call that
-    // to determine if any face at level 0 is complete. We omit that check here
-    // to avoid re-checking cube-completeness for every face at level 0.
-    if (level == 0)
-    {
-        return true;
     }
 
     // Check that non-zero levels are consistent with the base level.

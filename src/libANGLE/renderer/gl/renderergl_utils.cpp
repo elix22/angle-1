@@ -404,6 +404,17 @@ static void LimitVersion(gl::Version *curVersion, const gl::Version &maxVersion)
     }
 }
 
+void CapCombinedLimitToESShaders(GLuint *combinedLimit, gl::ShaderMap<GLuint> &perShaderLimit)
+{
+    GLuint combinedESLimit = 0;
+    for (gl::ShaderType shaderType : gl::kAllGraphicsShaderTypes)
+    {
+        combinedESLimit += perShaderLimit[shaderType];
+    }
+
+    *combinedLimit = std::min(*combinedLimit, combinedESLimit);
+}
+
 void GenerateCaps(const FunctionsGL *functions,
                   const WorkaroundsGL &workarounds,
                   gl::Caps *caps,
@@ -714,15 +725,8 @@ void GenerateCaps(const FunctionsGL *functions,
         caps->maxUniformBlockSize = QuerySingleGLInt64(functions, GL_MAX_UNIFORM_BLOCK_SIZE);
         caps->uniformBufferOffsetAlignment =
             QuerySingleGLInt(functions, GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT);
-
-        GLuint maxCombinedUniformBlocks =
+        caps->maxCombinedUniformBlocks =
             QuerySingleGLInt(functions, GL_MAX_COMBINED_UNIFORM_BLOCKS);
-        // The real cap contains the limits for shader types that are not available to ES, so limit
-        // the cap to the sum of vertex+fragment shader caps.
-        caps->maxCombinedUniformBlocks = std::min(
-            maxCombinedUniformBlocks, caps->maxShaderUniformBlocks[gl::ShaderType::Vertex] +
-                                          caps->maxShaderUniformBlocks[gl::ShaderType::Fragment]);
-
         caps->maxCombinedShaderUniformComponents[gl::ShaderType::Vertex] =
             QuerySingleGLInt64(functions, GL_MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS);
         caps->maxCombinedShaderUniformComponents[gl::ShaderType::Fragment] =
@@ -770,8 +774,8 @@ void GenerateCaps(const FunctionsGL *functions,
     // Determine the max combined texture image units by adding the vertex and fragment limits.  If
     // the real cap is queried, it would contain the limits for shader types that are not available
     // to ES.
-    caps->maxCombinedTextureImageUnits = caps->maxShaderTextureImageUnits[gl::ShaderType::Vertex] +
-                                         caps->maxShaderTextureImageUnits[gl::ShaderType::Fragment];
+    caps->maxCombinedTextureImageUnits =
+        QuerySingleGLInt(functions, GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
 
     // Table 6.34, implementation dependent transform feedback limits
     if (functions->isAtLeastGL(gl::Version(4, 0)) ||
@@ -1104,7 +1108,7 @@ void GenerateCaps(const FunctionsGL *functions,
 
     if (functions->hasGLExtension("GL_NV_viewport_array2"))
     {
-        extensions->multiview = true;
+        extensions->multiview2 = true;
         // GL_MAX_ARRAY_TEXTURE_LAYERS is guaranteed to be at least 256.
         const int maxLayers = QuerySingleGLInt(functions, GL_MAX_ARRAY_TEXTURE_LAYERS);
         // GL_MAX_VIEWPORTS is guaranteed to be at least 16.
@@ -1130,7 +1134,7 @@ void GenerateCaps(const FunctionsGL *functions,
                                        functions->isAtLeastGLES(gl::Version(3, 0)) ||
                                        functions->hasGLESExtension("GL_EXT_instanced_arrays");
     extensions->instancedArraysEXT = extensions->instancedArraysANGLE;
-    extensions->unpackSubimage = functions->standard == STANDARD_GL_DESKTOP ||
+    extensions->unpackSubimage     = functions->standard == STANDARD_GL_DESKTOP ||
                                  functions->isAtLeastGLES(gl::Version(3, 0)) ||
                                  functions->hasGLESExtension("GL_EXT_unpack_subimage");
     extensions->packSubimage = functions->standard == STANDARD_GL_DESKTOP ||
@@ -1201,7 +1205,7 @@ void GenerateCaps(const FunctionsGL *functions,
         functions->isAtLeastGL(gl::Version(4, 2)) || functions->isAtLeastGLES(gl::Version(3, 2));
 
     extensions->multiviewMultisample =
-        extensions->textureStorageMultisample2DArray && extensions->multiview;
+        extensions->textureStorageMultisample2DArray && extensions->multiview2;
 
     extensions->textureMultisample = functions->isAtLeastGL(gl::Version(3, 2)) ||
                                      functions->hasGLExtension("GL_ARB_texture_multisample");
@@ -1331,6 +1335,18 @@ void GenerateCaps(const FunctionsGL *functions,
             QuerySingleGLInt(functions, GL_MAX_GEOMETRY_SHADER_STORAGE_BLOCKS_EXT);
     }
 
+    // The real combined caps contain limits for shader types that are not available to ES, so limit
+    // the caps to the sum of vertex+fragment+geometry shader caps.
+    CapCombinedLimitToESShaders(&caps->maxCombinedUniformBlocks, caps->maxShaderUniformBlocks);
+    CapCombinedLimitToESShaders(&caps->maxCombinedTextureImageUnits,
+                                caps->maxShaderTextureImageUnits);
+    CapCombinedLimitToESShaders(&caps->maxCombinedShaderStorageBlocks,
+                                caps->maxShaderStorageBlocks);
+    CapCombinedLimitToESShaders(&caps->maxCombinedImageUniforms, caps->maxShaderImageUniforms);
+    CapCombinedLimitToESShaders(&caps->maxCombinedAtomicCounterBuffers,
+                                caps->maxShaderAtomicCounterBuffers);
+    CapCombinedLimitToESShaders(&caps->maxCombinedAtomicCounters, caps->maxShaderAtomicCounters);
+
     // EXT_blend_func_extended.
     // Note that this could be implemented also on top of native EXT_blend_func_extended, but it's
     // currently not fully implemented.
@@ -1373,9 +1389,6 @@ void GenerateWorkarounds(const FunctionsGL *functions, WorkaroundsGL *workaround
 {
     VendorID vendor = GetVendorID(functions);
     uint32_t device = GetDeviceID(functions);
-
-    workarounds->dontRemoveInvariantForFragmentInput =
-        functions->standard == STANDARD_GL_DESKTOP && IsAMD(vendor);
 
     // Don't use 1-bit alpha formats on desktop GL with AMD or Intel drivers.
     workarounds->avoid1BitAlphaTextureFormats =

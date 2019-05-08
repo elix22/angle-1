@@ -97,6 +97,9 @@ struct GLColor
 
     const GLubyte &operator[](size_t index) const { return (&R)[index]; }
 
+    const GLubyte *data() const { return &R; }
+    GLubyte *data() { return &R; }
+
     testing::AssertionResult ExpectNear(const GLColor &expected, const GLColor &err) const;
 
     GLubyte R, G, B, A;
@@ -188,29 +191,41 @@ GLColor32F ReadColor32F(GLint x, GLint y);
         EXPECT_EQ(expectedColors, actualColors);                                                   \
     } while (0)
 
-#define EXPECT_PIXEL_NEAR(x, y, r, g, b, a, abs_error)                  \
-    do                                                                  \
-    {                                                                   \
-        GLubyte pixel[4];                                               \
-        glReadPixels((x), (y), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel); \
-        EXPECT_GL_NO_ERROR();                                           \
-        EXPECT_NEAR((r), pixel[0], abs_error);                          \
-        EXPECT_NEAR((g), pixel[1], abs_error);                          \
-        EXPECT_NEAR((b), pixel[2], abs_error);                          \
-        EXPECT_NEAR((a), pixel[3], abs_error);                          \
+#define EXPECT_PIXEL_NEAR_HELPER(x, y, r, g, b, a, abs_error, ctype, format, type) \
+    do                                                                             \
+    {                                                                              \
+        ctype pixel[4];                                                            \
+        glReadPixels((x), (y), 1, 1, format, type, pixel);                         \
+        EXPECT_GL_NO_ERROR();                                                      \
+        EXPECT_NEAR((r), pixel[0], abs_error);                                     \
+        EXPECT_NEAR((g), pixel[1], abs_error);                                     \
+        EXPECT_NEAR((b), pixel[2], abs_error);                                     \
+        EXPECT_NEAR((a), pixel[3], abs_error);                                     \
     } while (0)
 
-#define EXPECT_PIXEL32F_NEAR(x, y, r, g, b, a, abs_error)       \
-    do                                                          \
-    {                                                           \
-        GLfloat pixel[4];                                       \
-        glReadPixels((x), (y), 1, 1, GL_RGBA, GL_FLOAT, pixel); \
-        EXPECT_GL_NO_ERROR();                                   \
-        EXPECT_NEAR((r), pixel[0], abs_error);                  \
-        EXPECT_NEAR((g), pixel[1], abs_error);                  \
-        EXPECT_NEAR((b), pixel[2], abs_error);                  \
-        EXPECT_NEAR((a), pixel[3], abs_error);                  \
+#define EXPECT_PIXEL_EQ_HELPER(x, y, r, g, b, a, ctype, format, type) \
+    do                                                                \
+    {                                                                 \
+        ctype pixel[4];                                               \
+        glReadPixels((x), (y), 1, 1, format, type, pixel);            \
+        EXPECT_GL_NO_ERROR();                                         \
+        EXPECT_EQ((r), pixel[0]);                                     \
+        EXPECT_EQ((g), pixel[1]);                                     \
+        EXPECT_EQ((b), pixel[2]);                                     \
+        EXPECT_EQ((a), pixel[3]);                                     \
     } while (0)
+
+#define EXPECT_PIXEL_NEAR(x, y, r, g, b, a, abs_error) \
+    EXPECT_PIXEL_NEAR_HELPER(x, y, r, g, b, a, abs_error, GLubyte, GL_RGBA, GL_UNSIGNED_BYTE)
+
+#define EXPECT_PIXEL_32F_NEAR(x, y, r, g, b, a, abs_error) \
+    EXPECT_PIXEL_NEAR_HELPER(x, y, r, g, b, a, abs_error, GLfloat, GL_RGBA, GL_FLOAT)
+
+#define EXPECT_PIXEL_8I(x, y, r, g, b, a) \
+    EXPECT_PIXEL_EQ_HELPER(x, y, r, g, b, a, GLbyte, GL_RGBA_INTEGER, GL_BYTE)
+
+#define EXPECT_PIXEL_8UI(x, y, r, g, b, a) \
+    EXPECT_PIXEL_EQ_HELPER(x, y, r, g, b, a, GLubyte, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE)
 
 // TODO(jmadill): Figure out how we can use GLColor's nice printing with EXPECT_NEAR.
 #define EXPECT_PIXEL_COLOR_NEAR(x, y, angleColor, abs_error) \
@@ -263,7 +278,6 @@ class ANGLETestBase
 
   public:
     void setWindowVisible(bool isVisible);
-    static bool eglDisplayExtensionEnabled(EGLDisplay display, const std::string &extName);
 
     virtual void overrideWorkaroundsD3D(angle::WorkaroundsD3D *workaroundsD3D) {}
     virtual void overrideFeaturesVk(angle::FeaturesVk *workaroundsVulkan) {}
@@ -329,12 +343,6 @@ class ANGLETestBase
                             bool useVertexBuffer,
                             float layer);
 
-    static bool extensionEnabled(const std::string &extName);
-    static bool extensionRequestable(const std::string &extName);
-    static bool ensureExtensionEnabled(const std::string &extName);
-    static bool eglClientExtensionEnabled(const std::string &extName);
-    static bool eglDeviceExtensionEnabled(EGLDeviceEXT device, const std::string &extName);
-
     void setWindowWidth(int width);
     void setWindowHeight(int height);
     void setConfigRedBits(int bits);
@@ -352,11 +360,10 @@ class ANGLETestBase
     void setExtensionsEnabled(bool extensionsEnabled);
     void setRobustAccess(bool enabled);
     void setBindGeneratesResource(bool bindGeneratesResource);
-    void setDebugLayersEnabled(bool enabled);
     void setClientArraysEnabled(bool enabled);
     void setRobustResourceInit(bool enabled);
     void setContextProgramCacheEnabled(bool enabled, angle::CacheProgramFunc cacheProgramFunc);
-    void setContextVirtualization(bool enabled);
+    void setContextResetStrategy(EGLenum resetStrategy);
     void forceNewDisplay();
 
     // Some EGL extension tests would like to defer the Context init until the test body.
@@ -378,7 +385,7 @@ class ANGLETestBase
     // Allows a test to be more restrictive about platform warnings.
     void treatPlatformWarningsAsErrors();
 
-    OSWindow *getOSWindow() { return mCurrentPlatform->osWindow; }
+    OSWindow *getOSWindow() { return mFixture->osWindow; }
 
     GLuint get2DTexturedQuadProgram();
 
@@ -392,6 +399,17 @@ class ANGLETestBase
         ~ScopedIgnorePlatformMessages();
     };
 
+    // Can be used before we get a GL context.
+    bool isGLRenderer() const
+    {
+        return mCurrentParams->getRenderer() == EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE;
+    }
+
+    bool isD3D11Renderer() const
+    {
+        return mCurrentParams->getRenderer() == EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE;
+    }
+
   private:
     void checkD3D11SDKLayersMessages();
 
@@ -403,10 +421,12 @@ class ANGLETestBase
                   bool useInstancedDrawCalls,
                   GLuint numInstances);
 
-    struct Platform
+    void initOSWindow();
+
+    struct TestFixture
     {
-        Platform();
-        ~Platform();
+        TestFixture();
+        ~TestFixture();
 
         EGLWindow *eglWindow = nullptr;
         WGLWindow *wglWindow = nullptr;
@@ -437,8 +457,9 @@ class ANGLETestBase
     // different config. This OSWindow sharing seemed to lead to driver bugs on some platforms.
     static OSWindow *mOSWindowSingleton;
 
-    static std::map<angle::PlatformParameters, Platform> gPlatforms;
-    Platform *mCurrentPlatform;
+    static std::map<angle::PlatformParameters, TestFixture> gFixtures;
+    const angle::PlatformParameters *mCurrentParams;
+    TestFixture *mFixture;
 
     // Workaround for NVIDIA not being able to share a window with OpenGL and Vulkan.
     static Optional<EGLint> mLastRendererType;
@@ -485,16 +506,6 @@ class ANGLETestEnvironment : public testing::Environment
     static std::unique_ptr<angle::Library> gWGLLibrary;
 };
 
-// This base fixture loads the EGL entry points.
-class EGLTest : public testing::Test
-{
-  public:
-    EGLTest();
-    ~EGLTest();
-
-    void SetUp() override;
-};
-
 // Driver vendors
 bool IsIntel();
 bool IsAdreno();
@@ -519,9 +530,13 @@ bool IsVulkan();
 bool IsDebug();
 bool IsRelease();
 
-bool IsDisplayExtensionEnabled(EGLDisplay display, const std::string &extName);
+bool EnsureGLExtensionEnabled(const std::string &extName);
+bool IsEGLClientExtensionEnabled(const std::string &extName);
+bool IsEGLDeviceExtensionEnabled(EGLDeviceEXT device, const std::string &extName);
+bool IsEGLDisplayExtensionEnabled(EGLDisplay display, const std::string &extName);
+bool IsGLExtensionEnabled(const std::string &extName);
+bool IsGLExtensionRequestable(const std::string &extName);
 
-// Note: git cl format messes up this formatting.
 #define ANGLE_SKIP_TEST_IF(COND)                                  \
     do                                                            \
     {                                                             \

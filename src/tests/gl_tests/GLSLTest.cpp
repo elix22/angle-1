@@ -508,6 +508,22 @@ class GLSLTest_ES31 : public GLSLTest
     void SetUp() override { ANGLETest::SetUp(); }
 };
 
+std::string BuillBigInitialStackShader(int length)
+{
+    std::string result;
+    result += "void main() { \n";
+    for (int i = 0; i < length; i++)
+    {
+        result += "  if (true) { \n";
+    }
+    result += "  int temp; \n";
+    for (int i = 0; i <= length; i++)
+    {
+        result += "} \n";
+    }
+    return result;
+}
+
 TEST_P(GLSLTest, NamelessScopedStructs)
 {
     constexpr char kFS[] = R"(precision mediump float;
@@ -612,6 +628,9 @@ void main()
 // Draw an array of points with the first vertex offset at 0 using gl_VertexID
 TEST_P(GLSLTest_ES3, GLVertexIDOffsetZeroDrawArray)
 {
+    // TODO(syoussefi): missing ES3 shader feature support.  http://anglebug.com/3221
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     constexpr int kStartIndex  = 0;
     constexpr int kArrayLength = 5;
     constexpr char kVS[]       = R"(#version 300 es
@@ -643,11 +662,100 @@ void main() {
     }
 }
 
+// Helper function for the GLVertexIDIntegerTextureDrawArrays test
+void GLVertexIDIntegerTextureDrawArrays_helper(int first, int count, GLenum err)
+{
+    glDrawArrays(GL_POINTS, first, count);
+
+    int pixel[4];
+    glReadPixels(0, 0, 1, 1, GL_RGBA_INTEGER, GL_INT, pixel);
+    // If we call this function with err as GL_NO_ERROR, then we expect no error and check the
+    // pixels.
+    if (err == static_cast<GLenum>(GL_NO_ERROR))
+    {
+        EXPECT_GL_NO_ERROR();
+        EXPECT_EQ(pixel[0], first + count - 1);
+    }
+    else
+    {
+        // If we call this function with err set, we will allow the error, but check the pixels if
+        // the error hasn't occurred.
+        GLenum glError = glGetError();
+        if (glError == err || glError == static_cast<GLenum>(GL_NO_ERROR))
+        {
+            EXPECT_EQ(pixel[0], first + count - 1);
+        }
+    }
+}
+
+// Ensure gl_VertexID gets passed to an integer texture properly when drawArrays is called. This
+// is based off the WebGL test:
+// https://github.com/KhronosGroup/WebGL/blob/master/sdk/tests/conformance2/rendering/vertex-id.html
+TEST_P(GLSLTest_ES3, GLVertexIDIntegerTextureDrawArrays)
+{
+    // TODO(syoussefi): missing ES3 shader feature support.  http://anglebug.com/3221
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
+    // Have to set a large point size because the window size is much larger than the texture
+    constexpr char kVS[] = R"(#version 300 es
+flat out highp int vVertexID;
+void main() {
+    vVertexID = gl_VertexID;
+    gl_Position = vec4(0,0,0,1);
+    gl_PointSize = 1000.0;
+})";
+
+    constexpr char kFS[] = R"(#version 300 es
+flat in highp int vVertexID;
+out highp int oVertexID;
+void main() {
+    oVertexID = vVertexID;
+})";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    glUseProgram(program);
+
+    GLTexture texture;
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32I, 1, 1);
+    GLFramebuffer fbo;
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    ASSERT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    EXPECT_GL_NO_ERROR();
+
+    // Clear the texture to 42 to ensure the first test case doesn't accidentally pass
+    GLint val = 42;
+    glClearBufferiv(GL_COLOR, 0, &val);
+    int pixel[4];
+    glReadPixels(0, 0, 1, 1, GL_RGBA_INTEGER, GL_INT, pixel);
+    EXPECT_EQ(pixel[0], val);
+
+    GLVertexIDIntegerTextureDrawArrays_helper(0, 1, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(1, 1, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(10000, 1, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(100000, 1, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(1000000, 1, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(0, 2, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(1, 2, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(10000, 2, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(100000, 2, GL_NO_ERROR);
+    GLVertexIDIntegerTextureDrawArrays_helper(1000000, 2, GL_NO_ERROR);
+
+    int32_t int32Max = 0x7FFFFFFF;
+    GLVertexIDIntegerTextureDrawArrays_helper(int32Max - 2, 1, GL_OUT_OF_MEMORY);
+    GLVertexIDIntegerTextureDrawArrays_helper(int32Max - 1, 1, GL_OUT_OF_MEMORY);
+    GLVertexIDIntegerTextureDrawArrays_helper(int32Max, 1, GL_OUT_OF_MEMORY);
+}
+
 // Draw an array of points with the first vertex offset at 5 using gl_VertexID
 TEST_P(GLSLTest_ES3, GLVertexIDOffsetFiveDrawArray)
 {
     // Bug in Nexus drivers, offset does not work. (anglebug.com/3264)
     ANGLE_SKIP_TEST_IF((IsNexus5X() || IsNexus6P()) && IsOpenGLES());
+
+    // TODO(syoussefi): missing ES3 shader feature support.  http://anglebug.com/3221
+    ANGLE_SKIP_TEST_IF(IsVulkan());
 
     constexpr int kStartIndex  = 5;
     constexpr int kArrayLength = 5;
@@ -971,14 +1079,9 @@ TEST_P(GLSLTest_ES3, InvariantGLPosition)
     EXPECT_NE(0u, program);
 }
 
-// Verify that using invariant(all) in both shaders succeeds in ESSL 1.00.
+// Verify that using invariant(all) in both shaders fails in ESSL 1.00.
 TEST_P(GLSLTest, InvariantAllBoth)
 {
-    // TODO: ESSL 1.00 -> GLSL 1.20 translation should add "invariant" in fragment shader
-    // for varyings which are invariant in vertex shader individually,
-    // and remove invariant(all) from fragment shader (http://anglebug.com/1293)
-    ANGLE_SKIP_TEST_IF(IsDesktopOpenGL());
-
     constexpr char kFS[] =
         "#pragma STDGL invariant(all)\n"
         "precision mediump float;\n"
@@ -992,7 +1095,7 @@ TEST_P(GLSLTest, InvariantAllBoth)
         "void main() { v_varying = a_position.x; gl_Position = a_position; }\n";
 
     GLuint program = CompileProgram(kVS, kFS);
-    EXPECT_NE(0u, program);
+    EXPECT_EQ(0u, program);
 }
 
 // Verify that functions without return statements still compile
@@ -1151,7 +1254,7 @@ TEST_P(GLSLTest_ES3, InvariantAllBoth)
     EXPECT_EQ(0u, program);
 }
 
-// Verify that using invariant(all) only in fragment shader fails in ESSL 1.00.
+// Verify that using invariant(all) only in fragment shader succeeds in ESSL 1.00.
 TEST_P(GLSLTest, InvariantAllIn)
 {
     constexpr char kFS[] =
@@ -1166,7 +1269,7 @@ TEST_P(GLSLTest, InvariantAllIn)
         "void main() { v_varying = a_position.x; gl_Position = a_position; }\n";
 
     GLuint program = CompileProgram(kVS, kFS);
-    EXPECT_EQ(0u, program);
+    EXPECT_NE(0u, program);
 }
 
 // Verify that using invariant(all) only in fragment shader fails in ESSL 3.00.
@@ -1863,7 +1966,7 @@ TEST_P(GLSLTest, VerifyMaxFragmentUniformVectorsExceeded)
 // Test compiling shaders using the GL_EXT_shader_texture_lod extension
 TEST_P(GLSLTest, TextureLOD)
 {
-    ANGLE_SKIP_TEST_IF(!extensionEnabled("GL_EXT_shader_texture_lod"));
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_EXT_shader_texture_lod"));
 
     constexpr char kFS[] =
         "#extension GL_EXT_shader_texture_lod : require\n"
@@ -2308,6 +2411,10 @@ TEST_P(GLSLTest_ES3, UnaryMinusOperatorSignedInt)
 // Convers a bug with the unary minus operator on unsigned integer workaround.
 TEST_P(GLSLTest_ES3, UnaryMinusOperatorUnsignedInt)
 {
+    // TODO(syoussefi): missing [gs]etUniform support with unsigned formats.
+    // http://anglebug.com/2392
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     constexpr char kVS[] =
         "#version 300 es\n"
         "in highp vec4 position;\n"
@@ -2377,7 +2484,7 @@ TEST_P(GLSLTest, NestedSequenceOperatorWithTernaryInside)
 // Test that using a sampler2D and samplerExternalOES in the same shader works (anglebug.com/1534)
 TEST_P(GLSLTest, ExternalAnd2DSampler)
 {
-    ANGLE_SKIP_TEST_IF(!extensionEnabled("GL_OES_EGL_image_external"));
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_OES_EGL_image_external"));
 
     constexpr char kFS[] = R"(#extension GL_OES_EGL_image_external : enable
 precision mediump float;
@@ -3243,20 +3350,67 @@ TEST_P(GLSLTest_ES3, VaryingStructNotDeclaredInFragmentShader)
     ANGLE_GL_PROGRAM(program, kVS, kFS);
 }
 
-// Test that a varying struct that gets used in the fragment shader works.
-TEST_P(GLSLTest_ES3, VaryingStructUsedInFragmentShader)
+// Test that a varying struct that's not declared in the vertex shader, and is unused in the
+// fragment shader links successfully.
+TEST_P(GLSLTest_ES3, VaryingStructNotDeclaredInVertexShader)
 {
+    // GLSL ES allows the vertex shader to not declare a varying if the fragment shader is not
+    // going to use it.  See section 9.1 in
+    // https://www.khronos.org/registry/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.pdf or
+    // section 4.3.5 in https://www.khronos.org/files/opengles_shading_language.pdf
+    //
+    // However, nvidia OpenGL ES drivers fail to link this program.
+    //
+    // http://anglebug.com/3413
+    ANGLE_SKIP_TEST_IF(IsOpenGLES() && IsNVIDIA());
+
     constexpr char kVS[] =
         "#version 300 es\n"
-        "in vec4 inputAttribute;\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position = vec4(1.0);\n"
+        "}\n";
+
+    constexpr char kFS[] =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 col;\n"
+        "struct S {\n"
+        "    vec4 field;\n"
+        "};\n"
+        "in S varStruct;\n"
+        "void main()\n"
+        "{\n"
+        "    col = vec4(1.0);\n"
+        "}\n";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+}
+
+// Test that a varying struct that's not initialized in the vertex shader links successfully.
+TEST_P(GLSLTest_ES3, VaryingStructNotInitializedInVertexShader)
+{
+    // GLSL ES allows the vertex shader to declare but not initialize a varying (with a
+    // specification that the varying values are undefined in the fragment stage).  See section 9.1
+    // in https://www.khronos.org/registry/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.pdf
+    // or section 4.3.5 in https://www.khronos.org/files/opengles_shading_language.pdf
+    //
+    // However, windows and mac OpenGL drivers fail to link this program.  With a message like:
+    //
+    // > Input of fragment shader 'varStruct' not written by vertex shader
+    //
+    // http://anglebug.com/3413
+    ANGLE_SKIP_TEST_IF(IsDesktopOpenGL() && (IsOSX() || IsWindows()));
+
+    constexpr char kVS[] =
+        "#version 300 es\n"
         "struct S {\n"
         "    vec4 field;\n"
         "};\n"
         "out S varStruct;\n"
         "void main()\n"
         "{\n"
-        "    gl_Position = inputAttribute;\n"
-        "    varStruct.field = vec4(0.0, 1.0, 0.0, 1.0);\n"
+        "    gl_Position = vec4(1.0);\n"
         "}\n";
 
     constexpr char kFS[] =
@@ -3273,8 +3427,167 @@ TEST_P(GLSLTest_ES3, VaryingStructUsedInFragmentShader)
         "}\n";
 
     ANGLE_GL_PROGRAM(program, kVS, kFS);
+}
+
+// Test that a varying struct that gets used in the fragment shader works.
+TEST_P(GLSLTest_ES3, VaryingStructUsedInFragmentShader)
+{
+    constexpr char kVS[] =
+        "#version 300 es\n"
+        "in vec4 inputAttribute;\n"
+        "struct S {\n"
+        "    vec4 field;\n"
+        "};\n"
+        "out S varStruct;\n"
+        "out S varStruct2;\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position = inputAttribute;\n"
+        "    varStruct.field = vec4(0.0, 0.5, 0.0, 1.0);\n"
+        "    varStruct2.field = vec4(0.0, 0.5, 0.0, 1.0);\n"
+        "}\n";
+
+    constexpr char kFS[] =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 col;\n"
+        "struct S {\n"
+        "    vec4 field;\n"
+        "};\n"
+        "in S varStruct;\n"
+        "in S varStruct2;\n"
+        "void main()\n"
+        "{\n"
+        "    col = varStruct.field + varStruct2.field;\n"
+        "}\n";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
     drawQuad(program.get(), "inputAttribute", 0.5f);
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+}
+
+// Test that multiple multi-field varying structs that get used in the fragment shader work.
+TEST_P(GLSLTest_ES3, ComplexVaryingStructsUsedInFragmentShader)
+{
+    // TODO(syoussefi): fails on android with:
+    //
+    // > Internal Vulkan error: A return array was too small for the result
+    //
+    // http://anglebug.com/3220
+    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAndroid());
+
+    constexpr char kVS[] =
+        "#version 300 es\n"
+        "in vec4 inputAttribute;\n"
+        "struct S {\n"
+        "    vec4 field1;\n"
+        "    vec4 field2;\n"
+        "};\n"
+        "out S varStruct;\n"
+        "out S varStruct2;\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position = inputAttribute;\n"
+        "    varStruct.field1 = vec4(0.0, 0.5, 0.0, 1.0);\n"
+        "    varStruct.field2 = vec4(0.0, 0.5, 0.0, 1.0);\n"
+        "    varStruct2.field1 = vec4(0.0, 0.5, 0.0, 1.0);\n"
+        "    varStruct2.field2 = vec4(0.0, 0.5, 0.0, 1.0);\n"
+        "}\n";
+
+    constexpr char kFS[] =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 col;\n"
+        "struct S {\n"
+        "    vec4 field1;\n"
+        "    vec4 field2;\n"
+        "};\n"
+        "in S varStruct;\n"
+        "in S varStruct2;\n"
+        "void main()\n"
+        "{\n"
+        "    col = varStruct.field1 + varStruct2.field2;\n"
+        "}\n";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    drawQuad(program.get(), "inputAttribute", 0.5f);
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+}
+
+// Test that an inactive varying struct that doesn't get used in the fragment shader works.
+TEST_P(GLSLTest_ES3, InactiveVaryingStructUnusedInFragmentShader)
+{
+    constexpr char kVS[] =
+        "#version 300 es\n"
+        "in vec4 inputAttribute;\n"
+        "struct S {\n"
+        "    vec4 field;\n"
+        "};\n"
+        "out S varStruct;\n"
+        "out S varStruct2;\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position = inputAttribute;\n"
+        "    varStruct.field = vec4(0.0, 1.0, 0.0, 1.0);\n"
+        "    varStruct2.field = vec4(0.0, 1.0, 0.0, 1.0);\n"
+        "}\n";
+
+    constexpr char kFS[] =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 col;\n"
+        "struct S {\n"
+        "    vec4 field;\n"
+        "};\n"
+        "in S varStruct;\n"
+        "in S varStruct2;\n"
+        "void main()\n"
+        "{\n"
+        "    col = varStruct.field;\n"
+        "}\n";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    drawQuad(program.get(), "inputAttribute", 0.5f);
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+}
+
+// Test that multiple varying matrices that get used in the fragment shader work.
+TEST_P(GLSLTest_ES3, VaryingMatrices)
+{
+    constexpr char kVS[] =
+        "#version 300 es\n"
+        "in vec4 inputAttribute;\n"
+        "out mat2x2 varMat;\n"
+        "out mat2x2 varMat2;\n"
+        "out mat4x3 varMat3;\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position = inputAttribute;\n"
+        "    varMat[0] = vec2(1, 1);\n"
+        "    varMat[1] = vec2(1, 1);\n"
+        "    varMat2[0] = vec2(0.5, 0.5);\n"
+        "    varMat2[1] = vec2(0.5, 0.5);\n"
+        "    varMat3[0] = vec3(0.75, 0.75, 0.75);\n"
+        "    varMat3[1] = vec3(0.75, 0.75, 0.75);\n"
+        "    varMat3[2] = vec3(0.75, 0.75, 0.75);\n"
+        "    varMat3[3] = vec3(0.75, 0.75, 0.75);\n"
+        "}\n";
+
+    constexpr char kFS[] =
+        "#version 300 es\n"
+        "precision mediump float;\n"
+        "out vec4 col;\n"
+        "in mat2x2 varMat;\n"
+        "in mat2x2 varMat2;\n"
+        "in mat4x3 varMat3;\n"
+        "void main()\n"
+        "{\n"
+        "    col = vec4(varMat[0].x, varMat2[1].y, varMat3[2].z, 1);\n"
+        "}\n";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    drawQuad(program.get(), "inputAttribute", 0.5f);
+    EXPECT_PIXEL_COLOR_NEAR(0, 0, GLColor(255, 127, 191, 255), 1);
 }
 
 // This test covers passing a struct containing a sampler as a function argument.
@@ -4100,6 +4413,10 @@ void main()
 // Test that a varying struct that's defined as a part of the declaration is handled correctly.
 TEST_P(GLSLTest_ES3, VaryingStructWithInlineDefinition)
 {
+    // TODO(syoussefi): missing ES3 shader feature support.
+    // http://anglebug.com/3199
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     constexpr char kVS[] = R"(#version 300 es
 in vec4 inputAttribute;
 
@@ -4196,6 +4513,10 @@ void main() {
 // is handled correctly.
 TEST_P(GLSLTest_ES3, FlatVaryingUsedInFoldedTernary)
 {
+    // TODO(syoussefi): missing ES3 shader feature support.
+    // http://anglebug.com/3219
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
     constexpr char kVS[] = R"(#version 300 es
 
 in vec4 inputAttribute;
@@ -4767,9 +5088,6 @@ TEST_P(GLSLTest, PointCoordConsistency)
     // AMD's OpenGL drivers may have the same issue. http://anglebug.com/1643
     ANGLE_SKIP_TEST_IF(IsAMD() && IsWindows() && IsOpenGL());
 
-    // http://anglebug.com/2599: Fails on the 5x due to driver bug.
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
-
     constexpr char kPointCoordVS[] = R"(attribute vec2 position;
 uniform vec2 viewportSize;
 void main()
@@ -5200,12 +5518,20 @@ TEST_P(GLSLTest, FragData)
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::red);
 }
 
+// Test angle can handle big initial stack size with dynamic stack allocation.
+TEST_P(GLSLTest, MemoryExhaustedTest)
+{
+    ANGLE_SKIP_TEST_IF(IsD3D11_FL93());
+    GLuint program =
+        CompileProgram(essl1_shaders::vs::Simple(), BuillBigInitialStackShader(36).c_str());
+    EXPECT_NE(0u, program);
+}
+
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
 ANGLE_INSTANTIATE_TEST(GLSLTest,
                        ES2_D3D9(),
                        ES2_D3D11(),
-                       ES2_D3D11_FL9_3(),
                        ES2_OPENGL(),
                        ES3_OPENGL(),
                        ES2_OPENGLES(),
@@ -5215,7 +5541,6 @@ ANGLE_INSTANTIATE_TEST(GLSLTest,
 ANGLE_INSTANTIATE_TEST(GLSLTestNoValidation,
                        ES2_D3D9(),
                        ES2_D3D11(),
-                       ES2_D3D11_FL9_3(),
                        ES2_OPENGL(),
                        ES3_OPENGL(),
                        ES2_OPENGLES(),
@@ -5224,7 +5549,7 @@ ANGLE_INSTANTIATE_TEST(GLSLTestNoValidation,
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
-ANGLE_INSTANTIATE_TEST(GLSLTest_ES3, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
+ANGLE_INSTANTIATE_TEST(GLSLTest_ES3, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES(), ES3_VULKAN());
 
 ANGLE_INSTANTIATE_TEST(WebGLGLSLTest, ES2_D3D11(), ES2_OPENGL(), ES2_OPENGLES(), ES2_VULKAN());
 

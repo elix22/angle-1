@@ -105,11 +105,9 @@ EGLBoolean EGLAPIENTRY EGL_Terminate(EGLDisplay dpy)
     ANGLE_EGL_TRY_RETURN(thread, ValidateTerminate(display), "eglTerminate",
                          GetDisplayIfValid(display), EGL_FALSE);
 
-    if (display->isValidContext(thread->getContext()))
-    {
-        SetContextCurrent(thread, nullptr);
-    }
-
+    ANGLE_EGL_TRY_RETURN(thread, display->makeCurrent(thread, nullptr, nullptr, nullptr),
+                         "eglTerminate", GetDisplayIfValid(display), EGL_FALSE);
+    SetContextCurrent(thread, nullptr);
     ANGLE_EGL_TRY_RETURN(thread, display->terminate(thread), "eglTerminate",
                          GetDisplayIfValid(display), EGL_FALSE);
 
@@ -447,15 +445,8 @@ EGLBoolean EGLAPIENTRY EGL_MakeCurrent(EGLDisplay dpy,
     // Only call makeCurrent if the context or surfaces have changed.
     if (previousDraw != drawSurface || previousRead != readSurface || previousContext != context)
     {
-        // Release the surface from the previously-current context, to allow
-        // destroyed surfaces to delete themselves.
-        if (previousContext != nullptr && context != previousContext)
-        {
-            ANGLE_EGL_TRY_RETURN(thread, previousContext->releaseSurface(display), "eglMakeCurrent",
-                                 GetContextIfValid(display, context), EGL_FALSE);
-        }
-
-        ANGLE_EGL_TRY_RETURN(thread, display->makeCurrent(drawSurface, readSurface, context),
+        ANGLE_EGL_TRY_RETURN(thread,
+                             display->makeCurrent(thread, drawSurface, readSurface, context),
                              "eglMakeCurrent", GetContextIfValid(display, context), EGL_FALSE);
 
         SetContextCurrent(thread, context);
@@ -497,7 +488,7 @@ EGLDisplay EGLAPIENTRY EGL_GetCurrentDisplay(void)
     thread->setSuccess();
     if (thread->getContext() != nullptr)
     {
-        return thread->getContext()->getCurrentDisplay();
+        return thread->getContext()->getDisplay();
     }
     return EGL_NO_DISPLAY;
 }
@@ -532,7 +523,7 @@ EGLBoolean EGLAPIENTRY EGL_WaitGL(void)
     EVENT("()");
     Thread *thread = egl::GetCurrentThread();
 
-    egl::Display *display = thread->getCurrentDisplay();
+    egl::Display *display = thread->getDisplay();
 
     ANGLE_EGL_TRY_RETURN(thread, ValidateDisplay(display), "eglWaitGL", GetDisplayIfValid(display),
                          EGL_FALSE);
@@ -552,7 +543,7 @@ EGLBoolean EGLAPIENTRY EGL_WaitNative(EGLint engine)
     EVENT("(EGLint engine = %d)", engine);
     Thread *thread = egl::GetCurrentThread();
 
-    egl::Display *display = thread->getCurrentDisplay();
+    egl::Display *display = thread->getDisplay();
 
     ANGLE_EGL_TRY_RETURN(thread, ValidateWaitNative(display, engine), "eglWaitNative",
                          GetThreadIfValid(thread), EGL_FALSE);
@@ -779,23 +770,16 @@ EGLBoolean EGLAPIENTRY EGL_ReleaseThread(void)
     Surface *previousDraw         = thread->getCurrentDrawSurface();
     Surface *previousRead         = thread->getCurrentReadSurface();
     gl::Context *previousContext  = thread->getContext();
-    egl::Display *previousDisplay = thread->getCurrentDisplay();
+    egl::Display *previousDisplay = thread->getDisplay();
 
     // Only call makeCurrent if the context or surfaces have changed.
     if (previousDraw != EGL_NO_SURFACE || previousRead != EGL_NO_SURFACE ||
         previousContext != EGL_NO_CONTEXT)
     {
-        // Release the surface from the previously-current context, to allow
-        // destroyed surfaces to delete themselves.
-        if (previousContext != nullptr && previousDisplay != EGL_NO_DISPLAY)
-        {
-            ANGLE_EGL_TRY_RETURN(thread, previousContext->releaseSurface(previousDisplay),
-                                 "eglReleaseThread", nullptr, EGL_FALSE);
-        }
-
         if (previousDisplay != EGL_NO_DISPLAY)
         {
-            ANGLE_EGL_TRY_RETURN(thread, previousDisplay->makeCurrent(nullptr, nullptr, nullptr),
+            ANGLE_EGL_TRY_RETURN(thread,
+                                 previousDisplay->makeCurrent(thread, nullptr, nullptr, nullptr),
                                  "eglReleaseThread", nullptr, EGL_FALSE);
         }
 
@@ -812,7 +796,7 @@ EGLBoolean EGLAPIENTRY EGL_WaitClient(void)
     EVENT("()");
     Thread *thread = egl::GetCurrentThread();
 
-    egl::Display *display = thread->getCurrentDisplay();
+    egl::Display *display = thread->getDisplay();
     gl::Context *context  = thread->getContext();
 
     ANGLE_EGL_TRY_RETURN(thread, ValidateDisplay(display), "eglWaitClient",
@@ -851,7 +835,7 @@ EGLSync EGLAPIENTRY EGL_CreateSync(EGLDisplay dpy, EGLenum type, const EGLAttrib
     AttributeMap attributes = AttributeMap::CreateFromAttribArray(attrib_list);
 
     gl::Context *currentContext  = thread->getContext();
-    egl::Display *currentDisplay = currentContext ? currentContext->getCurrentDisplay() : nullptr;
+    egl::Display *currentDisplay = currentContext ? currentContext->getDisplay() : nullptr;
 
     ANGLE_EGL_TRY_RETURN(
         thread, ValidateCreateSyncKHR(display, type, attributes, currentDisplay, currentContext),

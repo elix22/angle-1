@@ -12,13 +12,13 @@ vars = {
   'deqp_revision': '66a49e0a43f7af654ee1de8a3b1bcaf6c0d14aa4',
 
   # Current revision of glslang, the Khronos SPIRV compiler.
-  'glslang_revision': 'e0d59bbe1857e75134989eddb7437e9c068ec915',
+  'glslang_revision': 'c0640dabfddd7d6aa2fbcb58ab669326da8b93f0',
 
   # Current revision fo the SPIRV-Headers Vulkan support library.
-  'spirv_headers_revision': '111a25e4ae45e2b4d7c18415e1d6884712b958c4',
+  'spirv_headers_revision': 'c4f8f65792d4bf2657ca751904c511bbcf2ac77b',
 
   # Current revision of SPIRV-Tools for Vulkan.
-  'spirv_tools_revision': 'fcb8453104508b61b67f88ba0cb7c5bfdb49adb7',
+  'spirv_tools_revision': '63f57d95d6fad9032db768c34492bf3205a1e3af',
 
   # Current revision of Khronos Vulkan-Headers.
   'vulkan_headers_revision': '982f0f84dccf6f281b48318c77261a9028000126',
@@ -36,17 +36,17 @@ vars = {
 deps = {
 
   '{angle_root}/build': {
-    'url': '{chromium_git}/chromium/src/build.git@16bafea184ed656b9ec19c0dd18447d08464bd53',
+    'url': '{chromium_git}/chromium/src/build.git@54ea0e7fd122348de2f73ac21d1b6eafb9b78969',
     'condition': 'not build_with_chromium',
   },
 
   '{angle_root}/buildtools': {
-    'url': '{chromium_git}/chromium/src/buildtools.git@62f9eb0d64d6bf48f620b8233d9f7a1dc07f8414',
+    'url': '{chromium_git}/chromium/src/buildtools.git@d5c58b84d50d256968271db459cd29b22bff1ba2',
     'condition': 'not build_with_chromium',
   },
 
   '{angle_root}/testing': {
-    'url': '{chromium_git}/chromium/src/testing@71baa9533c1d21f99dfa8c9e6ca5c1db5f9566bd',
+    'url': '{chromium_git}/chromium/src/testing@32e614b7ec7b2b741351c1b8470aaf30c2f532fa',
     'condition': 'not build_with_chromium',
   },
 
@@ -60,6 +60,11 @@ deps = {
     'url': '{chromium_git}/external/deqp@{deqp_revision}',
   },
 
+  '{angle_root}/third_party/fuchsia-sdk': {
+    'url': '{chromium_git}/chromium/src/third_party/fuchsia-sdk.git@8e8db13b538ecb251e5ce9d5c781fc142f9752fd',
+    'condition': 'checkout_fuchsia and not build_with_chromium',
+  },
+
   # glmark2 is a GPL3-licensed OpenGL ES 2.0 benchmark. We use it for testing.
   '{angle_root}/third_party/glmark2/src': {
     'url': '{chromium_git}/external/github.com/glmark2/glmark2@c4b3ff5a481348e8bdc2b71ee275864db91e40b1',
@@ -71,12 +76,12 @@ deps = {
   },
 
   '{angle_root}/third_party/googletest': {
-    'url': '{chromium_git}/chromium/src/third_party/googletest@660425b1c5ca04559ab7e50c7572b5b771acca1c',
+    'url': '{chromium_git}/chromium/src/third_party/googletest@d5024103c8a8977156ee800eb1c84d92dffe9fdf',
     'condition': 'not build_with_chromium',
   },
 
   '{angle_root}/third_party/googletest/src': {
-    'url': '{chromium_git}/external/github.com/google/googletest.git@7203f37f57e4fef0d77670098aabc186309eb874',
+    'url': '{chromium_git}/external/github.com/google/googletest.git@9997a830ee5589c2da79198bc3b60d1c47e50118',
     'condition': 'not build_with_chromium',
   },
 
@@ -100,6 +105,11 @@ deps = {
     'url' : '{chromium_git}/external/github.com/open-source-parsers/jsoncpp@f572e8e42e22cfcf5ab0aea26574f408943edfa4',
     'condition': 'not build_with_chromium',
    },
+
+  '{angle_root}/third_party/Python-Markdown': {
+    'url': '{chromium_git}/chromium/src/third_party/Python-Markdown@b08af21eb795e522e1b972cb85bff59edb1ae209',
+    'condition': 'not build_with_chromium',
+  },
 
   '{angle_root}/third_party/qemu-linux-x64': {
       'packages': [
@@ -169,13 +179,13 @@ deps = {
   },
 
   '{angle_root}/tools/clang': {
-    'url': '{chromium_git}/chromium/src/tools/clang.git@3114fbc11f9644c54dd0a4cdbfa867bac50ff983',
+    'url': '{chromium_git}/chromium/src/tools/clang.git@210f1dc3ebf8504ae246d925e9110ec427eef43f',
     'condition': 'not build_with_chromium',
   },
 
-  '{angle_root}/third_party/fuchsia-sdk': {
-    'url': '{chromium_git}/chromium/src/third_party/fuchsia-sdk.git@8e8db13b538ecb251e5ce9d5c781fc142f9752fd',
-    'condition': 'checkout_fuchsia and not build_with_chromium',
+  '{angle_root}/tools/md_browser': {
+    'url': '{chromium_git}/chromium/src/tools/md_browser@e9462696241f3ca832890473173e03e7bcfe6adc',
+    'condition': 'not build_with_chromium',
   },
 }
 
@@ -217,43 +227,6 @@ hooks = [
                 '-s', '{angle_root}/buildtools/linux64/clang-format.sha1',
     ],
   },
-  # Pull GN binaries using checked-in hashes.
-  {
-    'name': 'gn_win',
-    'pattern': '.',
-    'condition': 'host_os == "win" and not build_with_chromium',
-    'action': [ 'download_from_google_storage',
-                '--no_resume',
-                '--platform=win32',
-                '--no_auth',
-                '--bucket', 'chromium-gn',
-                '-s', '{angle_root}/buildtools/win/gn.exe.sha1',
-    ],
-  },
-  {
-    'name': 'gn_mac',
-    'pattern': '.',
-    'condition': 'host_os == "mac" and not build_with_chromium',
-    'action': [ 'download_from_google_storage',
-                '--no_resume',
-                '--platform=darwin',
-                '--no_auth',
-                '--bucket', 'chromium-gn',
-                '-s', '{angle_root}/buildtools/mac/gn.sha1',
-    ],
-  },
-  {
-    'name': 'gn_linux64',
-    'pattern': '.',
-    'condition': 'host_os == "linux" and not build_with_chromium',
-    'action': [ 'download_from_google_storage',
-                '--no_resume',
-                '--platform=linux*',
-                '--no_auth',
-                '--bucket', 'chromium-gn',
-                '-s', '{angle_root}/buildtools/linux64/gn.sha1',
-    ],
-  },
   {
     'name': 'sysroot_x86',
     'pattern': '.',
@@ -274,6 +247,13 @@ hooks = [
     'pattern': '.',
     'condition': 'checkout_win and not build_with_chromium',
     'action': ['python', '{angle_root}/build/vs_toolchain.py', 'update', '--force'],
+  },
+  {
+    # Update the Mac toolchain if necessary.
+    'name': 'mac_toolchain',
+    'pattern': '.',
+    'condition': 'checkout_mac and not build_with_chromium',
+    'action': ['python', '{angle_root}/build/mac_toolchain.py'],
   },
 
   {
@@ -313,6 +293,34 @@ hooks = [
     'action': [
       'python',
       '{angle_root}/build/fuchsia/update_sdk.py',
+    ],
+  },
+
+  # Download glslang validator binary for Linux.
+  {
+    'name': 'linux_glslang_validator',
+    'pattern': '.',
+    'condition': 'checkout_linux and not build_with_chromium',
+    'action': [ 'download_from_google_storage',
+                '--no_resume',
+                '--platform=linux*',
+                '--no_auth',
+                '--bucket', 'angle-glslang-validator',
+                '-s', '{angle_root}/tools/glslang/glslang_validator.sha1',
+    ],
+  },
+
+  # Download glslang validator binary for Windows.
+  {
+    'name': 'win_glslang_validator',
+    'pattern': '.',
+    'condition': 'checkout_win and not build_with_chromium',
+    'action': [ 'download_from_google_storage',
+                '--no_resume',
+                '--platform=win32*',
+                '--no_auth',
+                '--bucket', 'angle-glslang-validator',
+                '-s', '{angle_root}/tools/glslang/glslang_validator.exe.sha1',
     ],
   },
 ]

@@ -166,7 +166,6 @@ TParseContext::TParseContext(TSymbolTable &symt,
                              TExtensionBehavior &ext,
                              sh::GLenum type,
                              ShShaderSpec spec,
-                             ShCompileOptions options,
                              bool checksPrecErrors,
                              TDiagnostics *diagnostics,
                              const ShBuiltInResources &resources)
@@ -174,7 +173,6 @@ TParseContext::TParseContext(TSymbolTable &symt,
       mDeferredNonEmptyDeclarationErrorCheck(false),
       mShaderType(type),
       mShaderSpec(spec),
-      mCompileOptions(options),
       mShaderVersion(100),
       mTreeRoot(nullptr),
       mLoopNestingLevel(0),
@@ -1347,7 +1345,7 @@ void TParseContext::declarationQualifierErrorCheck(const sh::TQualifier qualifie
 
     // If multiview extension is enabled, "in" qualifier is allowed in the vertex shader in previous
     // parsing steps. So it needs to be checked here.
-    if (isExtensionEnabled(TExtension::OVR_multiview) && mShaderVersion < 300 &&
+    if (isExtensionEnabled(TExtension::OVR_multiview2) && mShaderVersion < 300 &&
         qualifier == EvqVertexIn)
     {
         error(location, "storage qualifier supported in GLSL ES 3.00 and above only", "in");
@@ -2443,32 +2441,6 @@ TIntermDeclaration *TParseContext::parseSingleDeclaration(
     const ImmutableString &identifier)
 {
     TType *type = new TType(publicType);
-    if ((mCompileOptions & SH_FLATTEN_PRAGMA_STDGL_INVARIANT_ALL) &&
-        mDirectiveHandler.pragma().stdgl.invariantAll)
-    {
-        TQualifier qualifier = type->getQualifier();
-
-        // The directive handler has already taken care of rejecting invalid uses of this pragma
-        // (for example, in ESSL 3.00 fragment shaders), so at this point, flatten it into all
-        // affected variable declarations:
-        //
-        // 1. Built-in special variables which are inputs to the fragment shader. (These are handled
-        // elsewhere, in TranslatorGLSL.)
-        //
-        // 2. Outputs from vertex shaders in ESSL 1.00 and 3.00 (EvqVaryingOut and EvqVertexOut). It
-        // is actually less likely that there will be bugs in the handling of ESSL 3.00 shaders, but
-        // the way this is currently implemented we have to enable this compiler option before
-        // parsing the shader and determining the shading language version it uses. If this were
-        // implemented as a post-pass, the workaround could be more targeted.
-        //
-        // 3. Inputs in ESSL 1.00 fragment shaders (EvqVaryingIn). This is somewhat in violation of
-        // the specification, but there are desktop OpenGL drivers that expect that this is the
-        // behavior of the #pragma when specified in ESSL 1.00 fragment shaders.
-        if (qualifier == EvqVaryingOut || qualifier == EvqVertexOut || qualifier == EvqVaryingIn)
-        {
-            type->setInvariant(true);
-        }
-    }
 
     checkGeometryShaderInputAndSetArraySize(identifierOrTypeLocation, identifier, type);
 
@@ -3132,7 +3104,7 @@ void TParseContext::parseGlobalLayoutQualifier(const TTypeQualifierBuilder &type
             return;
         }
     }
-    else if (isExtensionEnabled(TExtension::OVR_multiview) &&
+    else if (isExtensionEnabled(TExtension::OVR_multiview2) &&
              typeQualifier.qualifier == EvqVertexIn)
     {
         // This error is only specified in WebGL, but tightens unspecified behavior in the native
@@ -4561,7 +4533,7 @@ TLayoutQualifier TParseContext::parseLayoutQualifier(const ImmutableString &qual
     }
     else if (qualifierType == "num_views" && mShaderType == GL_VERTEX_SHADER)
     {
-        if (checkCanUseExtension(qualifierTypeLine, TExtension::OVR_multiview))
+        if (checkCanUseExtension(qualifierTypeLine, TExtension::OVR_multiview2))
         {
             parseNumViews(intValue, intValueLine, intValueString, &qualifier.numViews);
         }
@@ -4623,7 +4595,7 @@ TStorageQualifierWrapper *TParseContext::parseInQualifier(const TSourceLoc &loc)
     {
         case GL_VERTEX_SHADER:
         {
-            if (mShaderVersion < 300 && !isExtensionEnabled(TExtension::OVR_multiview))
+            if (mShaderVersion < 300 && !isExtensionEnabled(TExtension::OVR_multiview2))
             {
                 error(loc, "storage qualifier supported in GLSL ES 3.00 and above only", "in");
             }

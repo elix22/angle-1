@@ -133,9 +133,9 @@ class EXTMultisampleCompatibilityTest : public ANGLETest
 
     bool isApplicable() const
     {
-        return extensionEnabled("GL_EXT_multisample_compatibility") &&
-               extensionEnabled("GL_ANGLE_framebuffer_multisample") &&
-               extensionEnabled("GL_OES_rgb8_rgba8") && !IsAMD();
+        return IsGLExtensionEnabled("GL_EXT_multisample_compatibility") &&
+               IsGLExtensionEnabled("GL_ANGLE_framebuffer_multisample") &&
+               IsGLExtensionEnabled("GL_OES_rgb8_rgba8") && !IsAMD();
     }
     GLuint mSampleFBO;
     GLuint mResolveFBO;
@@ -226,9 +226,6 @@ TEST_P(EXTMultisampleCompatibilityTest, DrawAlphaOneAndResolve)
 {
     if (!isApplicable())
         return;
-
-    // TODO: Figure out why this fails on Android.
-    ANGLE_SKIP_TEST_IF(IsAndroid());
 
     // SAMPLE_ALPHA_TO_ONE is specified to transform alpha values of
     // covered samples to 1.0. In order to detect it, we use non-1.0
@@ -362,8 +359,8 @@ class MultisampleCompatibilityTest : public ANGLETest
 
     bool isApplicable() const
     {
-        return extensionEnabled("GL_ANGLE_framebuffer_multisample") &&
-               extensionEnabled("GL_OES_rgb8_rgba8");
+        return IsGLExtensionEnabled("GL_ANGLE_framebuffer_multisample") &&
+               IsGLExtensionEnabled("GL_OES_rgb8_rgba8");
     }
 
     GLuint mSampleFBO;
@@ -379,7 +376,7 @@ TEST_P(MultisampleCompatibilityTest, DrawCoverageAndResolve)
         return;
 
     // TODO: Figure out why this fails on Android.
-    ANGLE_SKIP_TEST_IF(IsAndroid());
+    ANGLE_SKIP_TEST_IF(IsAndroid() && IsOpenGLES());
 
     ANGLE_GL_PROGRAM(drawRed, essl1_shaders::vs::Simple(), essl1_shaders::fs::Red());
 

@@ -302,8 +302,8 @@ struct Extensions
     // GL_EXT_frag_depth
     bool fragDepth;
 
-    // ANGLE_multiview
-    bool multiview;
+    // OVR_multiview2
+    bool multiview2;
     GLuint maxViews;
 
     // GL_ANGLE_texture_usage
@@ -332,6 +332,18 @@ struct Extensions
 
     // GL_OES_EGL_sync
     bool eglSync;
+
+    // GL_EXT_memory_object
+    bool memoryObject;
+
+    // GL_EXT_memory_object_fd
+    bool memoryObjectFd;
+
+    // GL_EXT_semaphore
+    bool semaphore;
+
+    // GL_EXT_semaphore_fd
+    bool semaphoreFd;
 
     // NV_EGL_stream_consumer_external
     bool eglStreamConsumerExternal;
@@ -480,6 +492,9 @@ struct Extensions
 
     // GL_ANGLE_provoking_vertex
     bool provokingVertex = false;
+
+    // GL_CHROMIUM_lose_context
+    bool loseContextCHROMIUM = false;
 };
 
 struct ExtensionInfo
@@ -681,6 +696,8 @@ struct Caps
     GLuint maxGeometryTotalOutputComponents;
     GLuint maxGeometryShaderInvocations;
 
+    GLuint subPixelBits;
+
     // GLES1 emulation: Caps for ES 1.1. Taken from Table 6.20 / 6.22 in the OpenGL ES 1.1 spec.
     GLuint maxMultitextureUnits;
     GLuint maxClipPlanes;
@@ -853,6 +870,9 @@ struct DisplayExtensions
 
     // EGL_ANDROID_recordable
     bool recordable;
+
+    // EGL_ANGLE_power_preference
+    bool powerPreference;
 };
 
 struct DeviceExtensions

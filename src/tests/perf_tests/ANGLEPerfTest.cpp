@@ -362,7 +362,7 @@ ANGLERenderTest::ANGLERenderTest(const std::string &name, const RenderTestParams
     switch (testParams.driver)
     {
         case angle::GLESDriverType::AngleEGL:
-            mGLWindow = createEGLWindow(testParams);
+            mGLWindow = EGLWindow::New(testParams.majorVersion, testParams.minorVersion);
             mEntryPointsLib.reset(angle::OpenSharedLibrary(ANGLE_EGL_LIBRARY_NAME));
             break;
         case angle::GLESDriverType::SystemEGL:
@@ -416,9 +416,6 @@ void ANGLERenderTest::SetUp()
         return;
     }
 
-    // Disable vsync.
-    mConfigParams.swapInterval = 0;
-
     mPlatformMethods.overrideWorkaroundsD3D      = OverrideWorkaroundsD3D;
     mPlatformMethods.logError                    = EmptyPlatformMethod;
     mPlatformMethods.logWarning                  = EmptyPlatformMethod;
@@ -429,8 +426,6 @@ void ANGLERenderTest::SetUp()
     mPlatformMethods.monotonicallyIncreasingTime = MonotonicallyIncreasingTime;
     mPlatformMethods.context                     = this;
 
-    mConfigParams.platformMethods = &mPlatformMethods;
-
     if (!mOSWindow->initialize(mName, mTestParams.windowWidth, mTestParams.windowHeight))
     {
         mSkipTest = true;
@@ -438,10 +433,22 @@ void ANGLERenderTest::SetUp()
         // FAIL returns.
     }
 
-    if (!mGLWindow->initializeGL(mOSWindow, mEntryPointsLib.get(), mConfigParams))
+    // Override platform method parameter.
+    EGLPlatformParameters withMethods = mTestParams.eglParameters;
+    withMethods.platformMethods       = &mPlatformMethods;
+
+    if (!mGLWindow->initializeGL(mOSWindow, mEntryPointsLib.get(), withMethods, mConfigParams))
     {
         mSkipTest = true;
         FAIL() << "Failed initializing GL Window";
+        // FAIL returns.
+    }
+
+    // Disable vsync.
+    if (!mGLWindow->setSwapInterval(0))
+    {
+        mSkipTest = true;
+        FAIL() << "Failed setting swap interval";
         // FAIL returns.
     }
 
@@ -525,7 +532,7 @@ void ANGLERenderTest::step()
 
 void ANGLERenderTest::startGpuTimer()
 {
-    if (shouldTrackGpuTime())
+    if (mTestParams.trackGpuTime)
     {
         glBeginQueryEXT(GL_TIME_ELAPSED_EXT, mTimestampQuery);
     }
@@ -533,7 +540,7 @@ void ANGLERenderTest::startGpuTimer()
 
 void ANGLERenderTest::stopGpuTimer()
 {
-    if (shouldTrackGpuTime())
+    if (mTestParams.trackGpuTime)
     {
         glEndQueryEXT(GL_TIME_ELAPSED_EXT);
         uint64_t gpuTimeNs = 0;
@@ -545,7 +552,7 @@ void ANGLERenderTest::stopGpuTimer()
 
 void ANGLERenderTest::startTest()
 {
-    if (shouldTrackGpuTime())
+    if (mTestParams.trackGpuTime)
     {
         glGenQueriesEXT(1, &mTimestampQuery);
         mGPUTimeNs = 0;
@@ -554,7 +561,7 @@ void ANGLERenderTest::startTest()
 
 void ANGLERenderTest::finishTest()
 {
-    if (shouldTrackGpuTime())
+    if (mTestParams.trackGpuTime)
     {
         glDeleteQueriesEXT(1, &mTimestampQuery);
     }
@@ -572,15 +579,6 @@ bool ANGLERenderTest::popEvent(Event *event)
 OSWindow *ANGLERenderTest::getWindow()
 {
     return mOSWindow;
-}
-
-bool ANGLERenderTest::shouldTrackGpuTime() const
-{
-    bool isD3D = mTestParams.getRenderer() == EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE ||
-                 mTestParams.getRenderer() == EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE;
-
-    // TODO: On D3D, tracking GPU time causes crashes.  http://anglebug.com/3310
-    return mTestParams.trackGpuTime && !isD3D;
 }
 
 bool ANGLERenderTest::areExtensionPrerequisitesFulfilled() const
@@ -610,11 +608,4 @@ void ANGLERenderTest::setRobustResourceInit(bool enabled)
 std::vector<TraceEvent> &ANGLERenderTest::getTraceEventBuffer()
 {
     return mTraceEventBuffer;
-}
-
-// static
-EGLWindow *ANGLERenderTest::createEGLWindow(const RenderTestParams &testParams)
-{
-    return EGLWindow::New(testParams.majorVersion, testParams.minorVersion,
-                          testParams.eglParameters);
 }

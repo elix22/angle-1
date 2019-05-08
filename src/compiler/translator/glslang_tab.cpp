@@ -129,6 +129,7 @@ extern int yydebug;
 
 #define YYLTYPE TSourceLoc
 #define YYLTYPE_IS_DECLARED 1
+#define YYLTYPE_IS_TRIVIAL 1
 
 
 
@@ -412,12 +413,6 @@ extern void yyerror(YYLTYPE* yylloc, TParseContext* context, void *scanner, cons
 
 #define ES3_OR_NEWER(TOKEN, LINE, REASON) do {  \
     if (context->getShaderVersion() < 300) {  \
-        context->error(LINE, REASON " supported in GLSL ES 3.00 and above only", TOKEN);  \
-    }  \
-} while (0)
-
-#define ES3_OR_NEWER_OR_MULTIVIEW(TOKEN, LINE, REASON) do {  \
-    if (context->getShaderVersion() < 300 && !context->isExtensionEnabled(TExtension::OVR_multiview)) {  \
         context->error(LINE, REASON " supported in GLSL ES 3.00 and above only", TOKEN);  \
     }  \
 } while (0)
@@ -3740,7 +3735,7 @@ yyreduce:
   case 151:
 
     {
-        ES3_OR_NEWER_OR_MULTIVIEW("layout", (yylsp[-3]), "qualifier");
+       ES3_OR_NEWER("layout", (yylsp[-3]), "qualifier");
         (yyval.interm.layoutQualifier) = (yyvsp[-1].interm.layoutQualifier);
     }
 

@@ -98,6 +98,13 @@ struct CombinedPrintToStringParamName
     const decltype(first) testName##params[] = {first, ##__VA_ARGS__};          \
     INSTANTIATE_TEST_SUITE_P(                                                   \
         , testName, testing::Combine(ANGLE_INSTANTIATE_TEST_PLATFORMS(testName), combine1), print)
+#define ANGLE_INSTANTIATE_TEST_COMBINE_4(testName, print, combine1, combine2, combine3, combine4, \
+                                         first, ...)                                              \
+    const decltype(first) testName##params[] = {first, ##__VA_ARGS__};                            \
+    INSTANTIATE_TEST_SUITE_P(, testName,                                                          \
+                             testing::Combine(ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),         \
+                                              combine1, combine2, combine3, combine4),            \
+                             print)
 #define ANGLE_INSTANTIATE_TEST_COMBINE_5(testName, print, combine1, combine2, combine3, combine4, \
                                          combine5, first, ...)                                    \
     const decltype(first) testName##params[] = {first, ##__VA_ARGS__};                            \
@@ -114,6 +121,16 @@ bool IsConfigSupported(const PlatformParameters &param);
 
 // Returns shared test system information. Can be used globally in the tests.
 SystemInfo *GetTestSystemInfo();
+
+// Returns a list of all enabled test platform names. For use in configuration enumeration.
+std::vector<std::string> GetAvailableTestPlatformNames();
+
+// Active config (e.g. ES2_Vulkan).
+extern std::string gSelectedConfig;
+
+// Use a separate isolated process per test config. This works around driver flakiness when using
+// multiple APIs/windows/etc in the same process.
+extern bool gSeparateProcessPerConfig;
 }  // namespace angle
 
 #endif  // ANGLE_TEST_INSTANTIATE_H_

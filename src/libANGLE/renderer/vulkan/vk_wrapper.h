@@ -39,6 +39,16 @@ class WrappedObject : angle::NonCopyable
         }
     }
 
+    template <typename ResourceOutType>
+    void dumpResources(std::vector<ResourceOutType> *outQueue)
+    {
+        if (valid())
+        {
+            outQueue->emplace_back(*static_cast<DerivedT *>(this));
+            mHandle = VK_NULL_HANDLE;
+        }
+    }
+
   protected:
     WrappedObject() : mHandle(VK_NULL_HANDLE) {}
     ~WrappedObject() { ASSERT(!valid()); }
@@ -170,12 +180,19 @@ class CommandBuffer : public WrappedObject<CommandBuffer, VkCommandBuffer>
 
     VkResult init(VkDevice device, const VkCommandBufferAllocateInfo &createInfo);
 
+    // There is no way to know if the command buffer contains any commands.
+    bool empty() const { return false; }
+
     using WrappedObject::operator=;
 
     static bool SupportsQueries(const VkPhysicalDeviceFeatures &features)
     {
         return features.inheritedQueries;
     }
+
+    // Vulkan command buffers are executed as secondary command buffers within a primary command
+    // buffer.
+    static constexpr bool ExecutesInline() { return false; }
 
     VkResult begin(const VkCommandBufferBeginInfo &info);
 

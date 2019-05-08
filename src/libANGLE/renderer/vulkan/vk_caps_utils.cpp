@@ -56,6 +56,12 @@ void RendererVk::ensureCapsInitialized() const
     // TODO(geofflang): Support GL_OES_EGL_image_external_essl3. http://anglebug.com/2668
     mNativeExtensions.eglImageExternalEssl3 = false;
 
+    mNativeExtensions.memoryObject   = true;
+    mNativeExtensions.memoryObjectFd = getFeatures().supportsExternalMemoryFd;
+
+    mNativeExtensions.semaphore   = true;
+    mNativeExtensions.semaphoreFd = getFeatures().supportsExternalSemaphoreFd;
+
     // TODO: Enable this always and emulate instanced draws if any divisor exceeds the maximum
     // supported.  http://anglebug.com/2672
     mNativeExtensions.instancedArraysANGLE = mMaxVertexAttribDivisor > 1;
@@ -87,6 +93,9 @@ void RendererVk::ensureCapsInitialized() const
         mNativeExtensions.textureFilterAnisotropic
             ? mPhysicalDeviceProperties.limits.maxSamplerAnisotropy
             : 0.0f;
+
+    // Vulkan natively supports non power-of-two textures
+    mNativeExtensions.textureNPOT = true;
 
     // TODO(lucferron): Eventually remove everything above this line in this function as the caps
     // get implemented.
@@ -169,11 +178,30 @@ void RendererVk::ensureCapsInitialized() const
     mNativeCaps.maxFragmentUniformVectors                            = maxUniformVectors;
     mNativeCaps.maxShaderUniformComponents[gl::ShaderType::Fragment] = maxUniformComponents;
 
-    // TODO(jmadill): this is an ES 3.0 property and we can skip implementing it for now.
-    // This is maxDescriptorSetUniformBuffers minus the number of uniform buffers we
-    // reserve for internal variables. We reserve one per shader stage for default uniforms
-    // and likely one per shader stage for ANGLE internal variables.
-    // mNativeCaps.maxShaderUniformBlocks[gl::ShaderType::Vertex] = ...
+    // A number of uniform buffers are reserved for internal use.  There's one dynamic uniform
+    // buffer used per stage for default uniforms, and a single uniform buffer object used for
+    // ANGLE internal variables.  ANGLE implements UBOs as uniform buffers, so the maximum number
+    // of uniform blocks is maxDescriptorSetUniformBuffers - 1:
+    const uint32_t maxUniformBuffers =
+        mPhysicalDeviceProperties.limits.maxDescriptorSetUniformBuffers -
+        kReservedDriverUniformBindingCount;
+
+    mNativeCaps.maxShaderUniformBlocks[gl::ShaderType::Vertex]   = maxUniformBuffers;
+    mNativeCaps.maxShaderUniformBlocks[gl::ShaderType::Fragment] = maxUniformBuffers;
+    mNativeCaps.maxCombinedUniformBlocks                         = maxUniformBuffers;
+
+    mNativeCaps.maxUniformBufferBindings = maxUniformBuffers;
+    mNativeCaps.maxUniformBlockSize      = mPhysicalDeviceProperties.limits.maxUniformBufferRange;
+    mNativeCaps.uniformBufferOffsetAlignment =
+        static_cast<GLuint>(mPhysicalDeviceProperties.limits.minUniformBufferOffsetAlignment);
+
+    // There is no additional limit to the combined number of components.  We can have up to a
+    // maximum number of uniform buffers, each having the maximum number of components.
+    const uint32_t maxCombinedUniformComponents = maxUniformBuffers * maxUniformComponents;
+    for (gl::ShaderType shaderType : gl::kAllGraphicsShaderTypes)
+    {
+        mNativeCaps.maxCombinedShaderUniformComponents[shaderType] = maxCombinedUniformComponents;
+    }
 
     // we use the same bindings on each stage, so the limitation is the same combined or not.
     mNativeCaps.maxCombinedTextureImageUnits =
@@ -194,6 +222,8 @@ void RendererVk::ensureCapsInitialized() const
     mNativeCaps.maxVaryingVectors =
         (mPhysicalDeviceProperties.limits.maxVertexOutputComponents / 4) - kReservedVaryingCount;
     mNativeCaps.maxVertexOutputComponents = mNativeCaps.maxVaryingVectors * 4;
+
+    mNativeCaps.subPixelBits = mPhysicalDeviceProperties.limits.subPixelPrecisionBits;
 }
 
 namespace egl_vk
@@ -254,7 +284,7 @@ egl::Config GenerateDefaultConfig(const RendererVk *renderer,
     config.bindToTextureRGBA  = colorFormat.format == GL_RGBA || colorFormat.format == GL_BGRA_EXT;
     config.colorBufferType    = EGL_RGB_BUFFER;
     config.configCaveat       = EGL_NONE;
-    config.conformant         = 0;
+    config.conformant         = es2Support | es3Support;
     config.depthSize          = depthStencilFormat.depthBits;
     config.stencilSize        = depthStencilFormat.stencilBits;
     config.level              = 0;

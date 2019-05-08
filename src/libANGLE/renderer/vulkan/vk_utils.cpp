@@ -33,11 +33,6 @@ VkImageUsageFlags GetStagingBufferUsageFlags(rx::vk::StagingUsage usage)
             return 0;
     }
 }
-
-constexpr gl::Rectangle kMaxSizedScissor(0,
-                                         0,
-                                         std::numeric_limits<int>::max(),
-                                         std::numeric_limits<int>::max());
 }  // anonymous namespace
 
 namespace angle
@@ -262,8 +257,11 @@ VkImageAspectFlags GetDepthStencilAspectFlags(const angle::Format &format)
 
 VkImageAspectFlags GetFormatAspectFlags(const angle::Format &format)
 {
-    return (format.redBits > 0 ? VK_IMAGE_ASPECT_COLOR_BIT : 0) |
-           GetDepthStencilAspectFlags(format);
+    VkImageAspectFlags dsAspect = GetDepthStencilAspectFlags(format);
+    // If the image is not depth stencil, assume color aspect.  Note that detecting color formats
+    // is less trivial than depth/stencil, e.g. as block formats don't indicate any bits for RGBA
+    // channels.
+    return dsAspect != 0 ? dsAspect : VK_IMAGE_ASPECT_COLOR_BIT;
 }
 
 VkImageAspectFlags GetDepthStencilAspectFlagsForCopy(bool copyDepth, bool copyStencil)
@@ -417,27 +415,11 @@ angle::Result InitShaderAndSerial(Context *context,
     return angle::Result::Continue;
 }
 
-// GarbageObject implementation.
-GarbageObject::GarbageObject()
-    : mSerial(), mHandleType(HandleType::Invalid), mHandle(VK_NULL_HANDLE)
+GarbageObjectBase::GarbageObjectBase() : mHandleType(HandleType::Invalid), mHandle(VK_NULL_HANDLE)
 {}
 
-GarbageObject::GarbageObject(const GarbageObject &other) = default;
-
-GarbageObject &GarbageObject::operator=(const GarbageObject &other) = default;
-
-bool GarbageObject::destroyIfComplete(VkDevice device, Serial completedSerial)
-{
-    if (completedSerial >= mSerial)
-    {
-        destroy(device);
-        return true;
-    }
-
-    return false;
-}
-
-void GarbageObject::destroy(VkDevice device)
+// GarbageObjectBase implementation
+void GarbageObjectBase::destroy(VkDevice device)
 {
     switch (mHandleType)
     {
@@ -505,6 +487,25 @@ void GarbageObject::destroy(VkDevice device)
             break;
     }
 }
+
+// GarbageObject implementation.
+GarbageObject::GarbageObject() : mSerial() {}
+
+GarbageObject::GarbageObject(const GarbageObject &other) = default;
+
+GarbageObject &GarbageObject::operator=(const GarbageObject &other) = default;
+
+bool GarbageObject::destroyIfComplete(VkDevice device, Serial completedSerial)
+{
+    if (completedSerial >= mSerial)
+    {
+        destroy(device);
+        return true;
+    }
+
+    return false;
+}
+
 }  // namespace vk
 
 // VK_EXT_debug_utils
@@ -821,37 +822,6 @@ void GetViewport(const gl::Rectangle &viewport,
     {
         viewportOut->y      = static_cast<float>(renderAreaHeight - viewport.y);
         viewportOut->height = -viewportOut->height;
-    }
-}
-
-void GetScissor(const gl::State &glState,
-                bool invertViewport,
-                const gl::Rectangle &renderArea,
-                VkRect2D *scissorOut)
-{
-    if (glState.isScissorTestEnabled())
-    {
-        gl::Rectangle clippedRect;
-        if (!gl::ClipRectangle(glState.getScissor(), renderArea, &clippedRect))
-        {
-            memset(scissorOut, 0, sizeof(VkRect2D));
-            return;
-        }
-
-        *scissorOut = gl_vk::GetRect(clippedRect);
-
-        if (invertViewport)
-        {
-            scissorOut->offset.y =
-                renderArea.height - scissorOut->offset.y - scissorOut->extent.height;
-        }
-    }
-    else
-    {
-        // If the scissor test isn't enabled, we can simply use a really big scissor that's
-        // certainly larger than the current surface using the maximum size of a 2D texture
-        // for the width and height.
-        *scissorOut = gl_vk::GetRect(kMaxSizedScissor);
     }
 }
 }  // namespace gl_vk

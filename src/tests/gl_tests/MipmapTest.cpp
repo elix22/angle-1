@@ -747,9 +747,9 @@ TEST_P(MipmapTest, DefineValidExtraLevelAndUseItLater)
 // Regression test for a bug that cause mipmaps to only generate using the top left corner as input.
 TEST_P(MipmapTest, MipMapGenerationD3D9Bug)
 {
-    ANGLE_SKIP_TEST_IF(!extensionEnabled("GL_EXT_texture_storage") ||
-                       !extensionEnabled("GL_OES_rgb8_rgba8") ||
-                       !extensionEnabled("GL_ANGLE_texture_usage"));
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_EXT_texture_storage") ||
+                       !IsGLExtensionEnabled("GL_OES_rgb8_rgba8") ||
+                       !IsGLExtensionEnabled("GL_ANGLE_texture_usage"));
 
     const GLColor mip0Color[4] = {
         GLColor::red,
@@ -777,10 +777,6 @@ TEST_P(MipmapTest, MipMapGenerationD3D9Bug)
 // level zero.
 TEST_P(MipmapTest, TextureCubeGeneralLevelZero)
 {
-    // This test seems to fail only on Android Vulkan.
-    // TODO(jmadill): Diagnose and fix. http://anglebug.com/2817
-    ANGLE_SKIP_TEST_IF(IsVulkan() && IsAndroid());
-
     // http://anglebug.com/3145
     ANGLE_SKIP_TEST_IF(IsFuchsia() && IsIntel() && IsVulkan());
 
@@ -1246,13 +1242,11 @@ TEST_P(MipmapTestES3, BaseLevelTextureBug)
 }
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
-// tests should be run against. Note: we run these tests against 9_3 on WARP due to hardware driver
-// issues on Win7
+// tests should be run against.
 ANGLE_INSTANTIATE_TEST(MipmapTest,
                        ES2_D3D9(),
-                       ES2_D3D11(EGL_EXPERIMENTAL_PRESENT_PATH_COPY_ANGLE),
-                       ES2_D3D11(EGL_EXPERIMENTAL_PRESENT_PATH_FAST_ANGLE),
-                       ES2_D3D11_FL9_3_WARP(),
+                       ES2_D3D11(),
+                       ES2_D3D11_PRESENT_PATH_FAST(),
                        ES2_OPENGL(),
                        ES3_OPENGL(),
                        ES2_OPENGLES(),

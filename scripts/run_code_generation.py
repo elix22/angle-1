@@ -13,29 +13,34 @@ import os
 import subprocess
 import sys
 
-script_dir = os.path.abspath(os.path.dirname(os.path.abspath(__file__)))
+script_dir = sys.path[0]
 root_dir = os.path.abspath(os.path.join(script_dir, '..'))
 
 # auto_script is a standard way for scripts to return their inputs and outputs.
+
 
 def get_child_script_dirname(script):
     # All script names are relative to ANGLE's root
     return os.path.dirname(os.path.abspath(os.path.join(root_dir, script)))
 
+
 # Replace all backslashes with forward slashes to be platform independent
 def clean_path_slashes(path):
     return path.replace("\\", "/")
+
 
 # Takes a script file name which is relative to the code generation script's directory and
 # changes it to be relative to the angle root directory
 def rebase_script_path(script_path, relative_path):
     return os.path.relpath(os.path.join(os.path.dirname(script_path), relative_path), root_dir)
 
+
 def grab_from_script(script, param):
     res = subprocess.check_output(['python', script, param]).strip()
     if res == '':
         return []
     return [clean_path_slashes(rebase_script_path(script, name)) for name in res.split(',')]
+
 
 def auto_script(script):
     # Set the CWD to the script directory.
@@ -48,6 +53,7 @@ def auto_script(script):
     # Reset the CWD to the root ANGLE directory.
     os.chdir(root_dir)
     return info
+
 
 hash_fname = "run_code_generation_hashes.json"
 
@@ -106,6 +112,7 @@ def any_hash_dirty(name, filenames, new_hashes, old_hashes):
     for filename in filenames:
         key = name + ":" + filename
         if not os.path.isfile(filename):
+            print('Could not find %s for %s' % (filename, name))
             found_dirty_hash = True
         else:
             new_hashes[key] = md5(filename)
@@ -115,12 +122,13 @@ def any_hash_dirty(name, filenames, new_hashes, old_hashes):
 
 
 def any_old_hash_missing(new_hashes, old_hashes):
+    result = False
     for name, _ in old_hashes.iteritems():
         if name not in new_hashes:
             script, file = name.split(':')
-            print('%s missing from generated hashes.' % file)
-            return True
-    return False
+            print('%s missing from generated hashes for %s.' % (file, script))
+            result = True
+    return result
 
 
 def update_output_hashes(script, outputs, new_hashes):
@@ -134,6 +142,7 @@ def update_output_hashes(script, outputs, new_hashes):
 
 def main():
     os.chdir(script_dir)
+
     old_hashes = json.load(open(hash_fname))
     new_hashes = {}
     any_dirty = False
@@ -180,8 +189,12 @@ def main():
             update_output_hashes(name, info['outputs'], new_hashes)
 
         os.chdir(script_dir)
-        json.dump(new_hashes, open(hash_fname, "w"), indent=2, sort_keys=True,
-                  separators=(',', ':\n    '))
+        json.dump(
+            new_hashes,
+            open(hash_fname, "w"),
+            indent=2,
+            sort_keys=True,
+            separators=(',', ':\n    '))
 
 
 if __name__ == '__main__':

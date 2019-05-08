@@ -19,22 +19,18 @@ namespace angle
 // fragments.
 GLuint CreateSimplePassthroughProgram(int numViews);
 
-// Create a set of textures to use for multiview rendering. If multiviewLayout is
-// GL_FRAMEBUFFER_MULTIVIEW_SIDE_BY_SIDE_ANGLE, then 2D textures are created. If multiviewLayout is
-// GL_FRAMEBUFFER_MULTIVIEW_LAYERED_ANGLE, then 2D texture arrays are created. Texture ids should be
+// Create a 2D texture array to use for multiview rendering. Texture ids should be
 // created beforehand. If depthTexture or stencilTexture is 0, it will not be initialized.
 // If samples is 0, then non-multisampled textures are created. Otherwise multisampled textures are
 // created with the requested sample count.
-void CreateMultiviewBackingTextures(GLenum multiviewLayout,
-                                    int samples,
+void CreateMultiviewBackingTextures(int samples,
                                     int viewWidth,
                                     int height,
                                     int numLayers,
                                     std::vector<GLuint> colorTextures,
                                     GLuint depthTexture,
                                     GLuint depthStencilTexture);
-void CreateMultiviewBackingTextures(GLenum multiviewLayout,
-                                    int samples,
+void CreateMultiviewBackingTextures(int samples,
                                     int viewWidth,
                                     int height,
                                     int numLayers,
@@ -43,11 +39,8 @@ void CreateMultiviewBackingTextures(GLenum multiviewLayout,
                                     GLuint depthStencilTexture);
 
 // Attach multiview textures to the framebuffer denoted by target. If there are multiple color
-// textures they get attached to different color attachments starting from 0. If multiviewLayout is
-// GL_FRAMEBUFFER_MULTIVIEW_SIDE_BY_SIDE_ANGLE, then the viewport offsets are set so that the views
-// are tightly packed inside the attachments.
+// textures they get attached to different color attachments starting from 0.
 void AttachMultiviewTextures(GLenum target,
-                             GLenum multiviewLayout,
                              int viewWidth,
                              int numViews,
                              int baseViewIndex,
@@ -55,7 +48,6 @@ void AttachMultiviewTextures(GLenum target,
                              GLuint depthTexture,
                              GLuint depthStencilTexture);
 void AttachMultiviewTextures(GLenum target,
-                             GLenum multiviewLayout,
                              int viewWidth,
                              int numViews,
                              int baseViewIndex,
@@ -101,32 +93,32 @@ class MultiviewTestBase : public ANGLETestBase
 
     void MultiviewTestBaseTearDown() { ANGLETestBase::ANGLETestTearDown(); }
 
-    // Requests the ANGLE_multiview extension and returns true if the operation succeeds.
+    // Requests the OVR_multiview2 extension and returns true if the operation succeeds.
     bool requestMultiviewExtension(bool requireMultiviewMultisample)
     {
-        if (extensionRequestable("GL_ANGLE_multiview"))
+        if (IsGLExtensionRequestable("GL_OVR_multiview2"))
         {
-            glRequestExtensionANGLE("GL_ANGLE_multiview");
+            glRequestExtensionANGLE("GL_OVR_multiview2");
         }
 
-        if (!extensionEnabled("GL_ANGLE_multiview"))
+        if (!IsGLExtensionEnabled("GL_OVR_multiview2"))
         {
-            std::cout << "Test skipped due to missing GL_ANGLE_multiview." << std::endl;
+            std::cout << "Test skipped due to missing GL_OVR_multiview2." << std::endl;
             return false;
         }
 
         if (requireMultiviewMultisample)
         {
-            if (extensionRequestable("GL_OES_texture_storage_multisample_2d_array"))
+            if (IsGLExtensionRequestable("GL_OES_texture_storage_multisample_2d_array"))
             {
                 glRequestExtensionANGLE("GL_OES_texture_storage_multisample_2d_array");
             }
-            if (extensionRequestable("GL_ANGLE_multiview_multisample"))
+            if (IsGLExtensionRequestable("GL_ANGLE_multiview_multisample"))
             {
                 glRequestExtensionANGLE("GL_ANGLE_multiview_multisample");
             }
 
-            if (!extensionEnabled("GL_ANGLE_multiview_multisample"))
+            if (!IsGLExtensionEnabled("GL_ANGLE_multiview_multisample"))
             {
                 std::cout << "Test skipped due to missing GL_ANGLE_multiview_multisample."
                           << std::endl;

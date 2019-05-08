@@ -264,7 +264,7 @@ angle::Result VertexArrayVk::convertVertexBufferCpu(ContextVk *contextVk,
 {
     TRACE_EVENT0("gpu.angle", "VertexArrayVk::convertVertexBufferCpu");
     // Needed before reading buffer or we could get stale data.
-    ANGLE_TRY(contextVk->getRenderer()->finish(contextVk));
+    ANGLE_TRY(contextVk->finishImpl());
 
     unsigned srcFormatSize = vertexFormat.angleFormat().pixelBytes;
     unsigned dstFormatSize = vertexFormat.bufferFormat().pixelBytes;
@@ -395,7 +395,28 @@ angle::Result VertexArrayVk::syncState(const gl::Context *context,
 
 ANGLE_INLINE void VertexArrayVk::setDefaultPackedInput(ContextVk *contextVk, size_t attribIndex)
 {
-    contextVk->onVertexAttributeChange(attribIndex, 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0);
+    const gl::State &glState = contextVk->getState();
+    const gl::VertexAttribCurrentValueData &defaultValue =
+        glState.getVertexAttribCurrentValues()[attribIndex];
+
+    switch (defaultValue.Type)
+    {
+        case gl::VertexAttribType::Float:
+            contextVk->onVertexAttributeChange(attribIndex, 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0);
+            break;
+
+        case gl::VertexAttribType::Int:
+            contextVk->onVertexAttributeChange(attribIndex, 0, 0, VK_FORMAT_R32G32B32A32_SINT, 0);
+            break;
+
+        case gl::VertexAttribType::UnsignedInt:
+            contextVk->onVertexAttributeChange(attribIndex, 0, 0, VK_FORMAT_R32G32B32A32_UINT, 0);
+            break;
+
+        default:
+            UNREACHABLE();
+            break;
+    }
 }
 
 angle::Result VertexArrayVk::syncDirtyAttrib(ContextVk *contextVk,
@@ -483,7 +504,7 @@ angle::Result VertexArrayVk::syncDirtyAttrib(ContextVk *contextVk,
 
     if (anyVertexBufferConvertedOnGpu && renderer->getFeatures().flushAfterVertexConversion)
     {
-        ANGLE_TRY(renderer->flush(contextVk));
+        ANGLE_TRY(contextVk->flushImpl());
     }
 
     return angle::Result::Continue;
@@ -678,7 +699,7 @@ angle::Result VertexArrayVk::updateIndexTranslation(ContextVk *contextVk,
 
         TRACE_EVENT0("gpu.angle", "VertexArrayVk::updateIndexTranslation");
         // Needed before reading buffer or we could get stale data.
-        ANGLE_TRY(renderer->finish(contextVk));
+        ANGLE_TRY(contextVk->finishImpl());
 
         ASSERT(type == gl::DrawElementsType::UnsignedByte);
         // Unsigned bytes don't have direct support in Vulkan so we have to expand the

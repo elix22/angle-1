@@ -58,15 +58,17 @@ struct SystemInfo
 
     std::vector<GPUDeviceInfo> gpus;
 
-    // Index of the primary GPU (the discrete one on dual GPU systems) in `gpus`.
-    // Will never be -1 after a successful GetSystemInfo.
-    int primaryGPUIndex = -1;
-    // Index of the currently active GPU in `gpus`, can be -1 if the active GPU could not be
-    // detected.
+    // Index of the GPU expected to be used for 3D graphics. Based on a best-guess heuristic on
+    // some platforms. On windows, this is accurate.
     int activeGPUIndex = -1;
+
+    // Deprecated, same as activeGPUIndex
+    int primaryGPUIndex = -1;
 
     bool isOptimus       = false;
     bool isAMDSwitchable = false;
+    // Only true on dual-GPU Mac laptops.
+    bool isMacSwitchable = false;
 
     // Only available on Android
     std::string machineManufacturer;
@@ -76,9 +78,6 @@ struct SystemInfo
 
     // Only available on macOS
     std::string machineModelVersion;
-
-    // Only available on Windows, set even on failure.
-    std::string primaryDisplayDeviceId;
 };
 
 // Gathers information about the system without starting a GPU driver and returns them in `info`.
@@ -93,6 +92,7 @@ constexpr VendorID kVendorID_ImgTec   = 0x1010;
 constexpr VendorID kVendorID_Intel    = 0x8086;
 constexpr VendorID kVendorID_NVIDIA   = 0x10DE;
 constexpr VendorID kVendorID_Qualcomm = 0x5143;
+constexpr VendorID kVendorID_VMWare   = 0x15ad;
 
 // Known non-PCI (i.e. Khronos-registered) vendor IDs
 constexpr VendorID kVendorID_Vivante     = 0x10001;
@@ -108,6 +108,7 @@ bool IsKazan(VendorID vendorId);
 bool IsNVIDIA(VendorID vendorId);
 bool IsQualcomm(VendorID vendorId);
 bool IsVeriSilicon(VendorID vendorId);
+bool IsVMWare(VendorID vendorId);
 bool IsVivante(VendorID vendorId);
 
 // Dumps the system info to stdout.

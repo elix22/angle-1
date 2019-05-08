@@ -217,6 +217,9 @@ class StateManager11 final : angle::NonCopyable
     // Called by VertexArray11 element array buffer sync.
     void invalidateIndexBuffer();
 
+    // Called by TextureStorage11. Also called internally.
+    void invalidateTexturesAndSamplers();
+
     void setRenderTarget(ID3D11RenderTargetView *rtv, ID3D11DepthStencilView *dsv);
     void setRenderTargets(ID3D11RenderTargetView **rtvs, UINT numRtvs, ID3D11DepthStencilView *dsv);
 
@@ -376,7 +379,6 @@ class StateManager11 final : angle::NonCopyable
     angle::Result syncTransformFeedbackBuffers(const gl::Context *context);
 
     // These are currently only called internally.
-    void invalidateTexturesAndSamplers();
     void invalidateDriverUniforms();
     void invalidateProgramUniforms();
     void invalidateConstantBuffer(unsigned int slot);
@@ -472,11 +474,6 @@ class StateManager11 final : angle::NonCopyable
     gl::Rectangle mCurViewport;
     float mCurNear;
     float mCurFar;
-
-    // The viewport offsets are guaranteed to be updated whenever the gl::State::DirtyBits are
-    // resolved and can be applied to the viewport and scissor whenever the internal viewport and
-    // scissor bits are resolved.
-    std::vector<gl::Offset> mViewportOffsets;
 
     // Things needed in viewport state
     ShaderConstants11 mShaderConstants;

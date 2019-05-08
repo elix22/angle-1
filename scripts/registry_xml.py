@@ -20,9 +20,9 @@ angle_extensions = [
     "GL_CHROMIUM_path_rendering",
     "GL_CHROMIUM_copy_texture",
     "GL_CHROMIUM_copy_compressed_texture",
+    "GL_CHROMIUM_lose_context",
     "GL_ANGLE_request_extension",
     "GL_ANGLE_robust_client_memory",
-    "GL_ANGLE_multiview",
     "GL_ANGLE_copy_texture_3d",
 ]
 
@@ -52,8 +52,12 @@ supported_extensions = sorted(angle_extensions + gles1_extensions + [
     "GL_EXT_geometry_shader",
     "GL_EXT_instanced_arrays",
     "GL_EXT_map_buffer_range",
+    "GL_EXT_memory_object",
+    "GL_EXT_memory_object_fd",
     "GL_EXT_occlusion_query_boolean",
     "GL_EXT_robustness",
+    "GL_EXT_semaphore",
+    "GL_EXT_semaphore_fd",
     "GL_EXT_texture_storage",
     "GL_KHR_debug",
     "GL_NV_fence",
@@ -63,6 +67,8 @@ supported_extensions = sorted(angle_extensions + gles1_extensions + [
     "GL_OES_texture_border_clamp",
     "GL_OES_texture_storage_multisample_2d_array",
     "GL_OES_vertex_array_object",
+    "GL_OVR_multiview",
+    "GL_OVR_multiview2",
     "GL_KHR_parallel_shader_compile",
     "GL_ANGLE_multi_draw",
 ])
@@ -102,13 +108,17 @@ strip_suffixes = ["ANGLE", "EXT", "KHR", "OES", "CHROMIUM"]
 # Toggle generation here.
 support_EGL_ANGLE_explicit_context = True
 
+
 def script_relative(path):
     return os.path.join(os.path.dirname(sys.argv[0]), path)
+
 
 def path_to(folder, file):
     return os.path.join(script_relative(".."), "src", folder, file)
 
+
 class GLCommandNames:
+
     def __init__(self):
         self.command_names = {}
 
@@ -130,8 +140,10 @@ class GLCommandNames:
         # Add the commands that aren't duplicates
         self.command_names[version] += commands
 
+
 class RegistryXML:
-    def __init__(self, xml_file, ext_file = None):
+
+    def __init__(self, xml_file, ext_file=None):
         tree = etree.parse(script_relative(xml_file))
         self.root = tree.getroot()
         if (ext_file):

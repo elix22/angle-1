@@ -155,10 +155,7 @@ class ANGLERenderTest : public ANGLEPerfTest
     void startTest() override;
     void finishTest() override;
 
-    bool shouldTrackGpuTime() const;
     bool areExtensionPrerequisitesFulfilled() const;
-
-    static EGLWindow *createEGLWindow(const RenderTestParams &testParams);
 
     GLWindowBase *mGLWindow;
     OSWindow *mOSWindow;

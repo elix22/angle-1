@@ -138,11 +138,9 @@ void MakeDebugUtilsLabel(GLenum source, const char *marker, VkDebugUtilsLabelEXT
     kLabelColors[colorIndex].writeData(label->color);
 }
 
-#if ANGLE_USE_CUSTOM_VULKAN_CMD_BUFFERS
-constexpr VkSubpassContents kRenderPassContents = VK_SUBPASS_CONTENTS_INLINE;
-#else
-constexpr VkSubpassContents kRenderPassContents = VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS;
-#endif
+constexpr VkSubpassContents kRenderPassContents =
+    CommandBuffer::ExecutesInline() ? VK_SUBPASS_CONTENTS_INLINE
+                                    : VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS;
 
 // Helpers to unify executeCommands call based on underlying cmd buffer type
 ANGLE_MAYBE_UNUSED
@@ -184,6 +182,13 @@ bool CommandGraphResource::isResourceInUse(RendererVk *renderer) const
     return renderer->isSerialInUse(mStoredQueueSerial);
 }
 
+void CommandGraphResource::resetQueueSerial()
+{
+    mCurrentWritingNode = nullptr;
+    mCurrentReadingNodes.clear();
+    mStoredQueueSerial = Serial();
+}
+
 angle::Result CommandGraphResource::recordCommands(Context *context,
                                                    CommandBuffer **commandBufferOut)
 {
@@ -208,12 +213,6 @@ angle::Result CommandGraphResource::recordCommands(Context *context,
     }
 
     return angle::Result::Continue;
-}
-
-const gl::Rectangle &CommandGraphResource::getRenderPassRenderArea() const
-{
-    ASSERT(hasStartedRenderPass());
-    return mCurrentWritingNode->getRenderPassRenderArea();
 }
 
 angle::Result CommandGraphResource::beginRenderPass(
@@ -654,11 +653,6 @@ std::string CommandGraphNode::dumpCommandsForDiagnostics(const char *separator) 
         result += DumpCommands(mInsideRenderPassCommands, separator);
     }
     return result;
-}
-
-const gl::Rectangle &CommandGraphNode::getRenderPassRenderArea() const
-{
-    return mRenderPassRenderArea;
 }
 
 // CommandGraph implementation.

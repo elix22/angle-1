@@ -120,24 +120,16 @@ config("extra_warnings") {
       "/we4244",  # Conversion: possible loss of data.
       "/we4456",  # Variable shadowing.
       "/we4458",  # declaration hides class member.
+      "/we4715",  # not all control paths return a value
       "/we4800",  # forcing value to bool.
       "/we4838",  # narrowing conversion.
     ]
   }
   if (is_clang) {
-    if (!is_fuchsia) {
-      cflags += [
-        # Remove when crbug.com/926235 is resolved.
-        "-Wextra-semi",
-      ]
-    }
-
     cflags += [
       # Enable after anglebug.com/3128 is fixed.
       # "-Wextra-semi-stmt",
 
-      # Remove when crbug.com/428099 is resolved.
-      "-Winconsistent-missing-override",
       "-Wnon-virtual-dtor",
       "-Wunneeded-internal-declaration",
     ]
@@ -297,7 +289,10 @@ config("angle_gpu_info_util_config") {
 }
 
 angle_static_library("angle_gpu_info_util") {
-  public_configs += [ ":angle_gpu_info_util_config" ]
+  public_configs += [
+    ":angle_gpu_info_util_config",
+    ":angle_backend_config",
+  ]
   public_deps = [
     ":angle_common",
   ]
@@ -313,7 +308,7 @@ angle_static_library("angle_gpu_info_util") {
   if (is_win) {
     sources += libangle_gpu_info_util_win_sources
     libs += [ "setupapi.lib" ]
-    defines += [ "GPU_INFO_USE_SETUPAPI" ]
+    libs += [ "dxgi.lib" ]
   }
 
   if (is_linux || is_fuchsia) {
@@ -451,14 +446,11 @@ angle_source_set("angle_version") {
   ]
 }
 
-config("libANGLE_config") {
-  cflags = []
+config("angle_backend_config") {
   defines = []
-  libs = []
-  ldflags = []
+
   if (angle_enable_d3d9) {
     defines += [ "ANGLE_ENABLE_D3D9" ]
-    ldflags += [ "/DELAYLOAD:d3d9.dll" ]
   }
   if (angle_enable_d3d11) {
     defines += [ "ANGLE_ENABLE_D3D11" ]
@@ -480,6 +472,16 @@ config("libANGLE_config") {
   }
   if (angle_enable_null) {
     defines += [ "ANGLE_ENABLE_NULL" ]
+  }
+}
+
+config("libANGLE_config") {
+  cflags = []
+  defines = []
+  libs = []
+  ldflags = []
+  if (angle_enable_d3d9) {
+    ldflags += [ "/DELAYLOAD:d3d9.dll" ]
   }
   defines += [ "LIBANGLE_IMPLEMENTATION" ]
 
@@ -673,7 +675,10 @@ angle_static_library("libANGLE") {
   }
 
   configs += [ ":debug_annotations_config" ]
-  public_configs += [ ":libANGLE_config" ]
+  public_configs += [
+    ":libANGLE_config",
+    ":angle_backend_config",
+  ]
 
   # Windows ARM64 is available since 10.0.16299 so no need to copy
   # d3dcompiler_47.dll because this file is available as inbox.
@@ -971,10 +976,9 @@ foreach(is_shared_library,
         "//third_party/fuchsia-sdk/sdk:fdio",
         "//third_party/fuchsia-sdk/sdk:images",
         "//third_party/fuchsia-sdk/sdk:scenic_cpp",
-        "//third_party/fuchsia-sdk/sdk:ui_gfx",
         "//third_party/fuchsia-sdk/sdk:ui_policy",
         "//third_party/fuchsia-sdk/sdk:ui_scenic",
-        "//third_party/fuchsia-sdk/sdk:ui_viewsv1",
+        "//third_party/fuchsia-sdk/sdk:ui_views",
       ]
     } else if (use_ozone) {
       sources += util_ozone_sources
@@ -1108,22 +1112,15 @@ if (!is_component_build && is_android && symbol_level != 0) {
 
 if (!is_component_build && is_android &&
     current_toolchain == default_toolchain) {
-  # Package ANGLE libraries for pre-installed system image
-  angle_apk("aosp_apk") {
-    package_name = "com.android.angle"
+  # Package ANGLE libraries
+  angle_apk("angle_chromium_apk") {
+    package_name = "com.chromium.angle"
     apk_name = "AngleLibraries"
   }
 
   group("angle_apks") {
     deps = [
-      ":aosp_apk",
-    ]
-  }
-
-  # Include a temporary target until we update builders to use angle_apks
-  group("angle_apk") {
-    deps = [
-      ":angle_apks",
+      ":angle_chromium_apk",
     ]
   }
 }
