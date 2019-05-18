@@ -489,6 +489,8 @@ void Context::initialize()
     mComputeDirtyObjects.set(State::DIRTY_OBJECT_PROGRAM);
     mComputeDirtyObjects.set(State::DIRTY_OBJECT_SAMPLERS);
 
+    mCopyImageDirtyObjects.set(State::DIRTY_OBJECT_READ_FRAMEBUFFER);
+
     ANGLE_CONTEXT_TRY(mImplementation->initialize());
 }
 
@@ -3140,6 +3142,7 @@ Extensions Context::generateSupportedExtensions() const
         supportedExtensions.colorBufferFloat      = false;
         supportedExtensions.eglImageExternalEssl3 = false;
         supportedExtensions.textureNorm16         = false;
+        supportedExtensions.multiview             = false;
         supportedExtensions.multiview2            = false;
         supportedExtensions.maxViews              = 1u;
         supportedExtensions.copyTexture3d         = false;
@@ -3427,13 +3430,18 @@ void Context::updateCaps()
     mThreadPool = angle::WorkerThreadPool::Create(mState.mExtensions.parallelShaderCompile);
 
     // Reinitialize some dirty bits that depend on extensions.
-    bool robustInit = mState.isRobustResourceInitEnabled();
-    mDrawDirtyObjects.set(State::DIRTY_OBJECT_DRAW_ATTACHMENTS, robustInit);
-    mDrawDirtyObjects.set(State::DIRTY_OBJECT_TEXTURES_INIT, robustInit);
-    mDrawDirtyObjects.set(State::DIRTY_OBJECT_IMAGES_INIT, robustInit);
-    mBlitDirtyObjects.set(State::DIRTY_OBJECT_DRAW_ATTACHMENTS, robustInit);
-    mComputeDirtyObjects.set(State::DIRTY_OBJECT_TEXTURES_INIT, robustInit);
-    mComputeDirtyObjects.set(State::DIRTY_OBJECT_IMAGES_INIT, robustInit);
+    if (mState.isRobustResourceInitEnabled())
+    {
+        mDrawDirtyObjects.set(State::DIRTY_OBJECT_DRAW_ATTACHMENTS);
+        mDrawDirtyObjects.set(State::DIRTY_OBJECT_TEXTURES_INIT);
+        mDrawDirtyObjects.set(State::DIRTY_OBJECT_IMAGES_INIT);
+        mBlitDirtyObjects.set(State::DIRTY_OBJECT_DRAW_ATTACHMENTS);
+        mBlitDirtyObjects.set(State::DIRTY_OBJECT_READ_ATTACHMENTS);
+        mComputeDirtyObjects.set(State::DIRTY_OBJECT_TEXTURES_INIT);
+        mComputeDirtyObjects.set(State::DIRTY_OBJECT_IMAGES_INIT);
+        mReadPixelsDirtyObjects.set(State::DIRTY_OBJECT_READ_ATTACHMENTS);
+        mCopyImageDirtyObjects.set(State::DIRTY_OBJECT_READ_ATTACHMENTS);
+    }
 
     // We need to validate buffer bounds if we are in a WebGL or robust access context and the
     // back-end does not support robust buffer access behaviour.
@@ -3453,9 +3461,10 @@ void Context::initWorkarounds()
 
     // Lose the context upon out of memory error if the application is
     // expecting to watch for those events.
-    mWorkarounds.loseContextOnOutOfMemory = (mResetStrategy == GL_LOSE_CONTEXT_ON_RESET_EXT);
+    mWorkarounds.loseContextOnOutOfMemory.enabled =
+        (mResetStrategy == GL_LOSE_CONTEXT_ON_RESET_EXT);
 
-    if (mWorkarounds.syncFramebufferBindingsOnTexImage)
+    if (mWorkarounds.syncFramebufferBindingsOnTexImage.enabled)
     {
         // Update the Framebuffer bindings on TexImage to work around an Intel bug.
         mTexImageDirtyBits.set(State::DIRTY_BIT_READ_FRAMEBUFFER_BINDING);
@@ -3676,8 +3685,7 @@ void Context::copyTexImage2D(TextureTarget target,
                              GLsizei height,
                              GLint border)
 {
-    // Only sync the read FBO
-    ANGLE_CONTEXT_TRY(mState.syncDirtyObject(this, GL_READ_FRAMEBUFFER));
+    ANGLE_CONTEXT_TRY(mState.syncDirtyObjects(this, mCopyImageDirtyObjects));
 
     Rectangle sourceArea(x, y, width, height);
 
@@ -3701,8 +3709,7 @@ void Context::copyTexSubImage2D(TextureTarget target,
         return;
     }
 
-    // Only sync the read FBO
-    ANGLE_CONTEXT_TRY(mState.syncDirtyObject(this, GL_READ_FRAMEBUFFER));
+    ANGLE_CONTEXT_TRY(mState.syncDirtyObjects(this, mCopyImageDirtyObjects));
 
     Offset destOffset(xoffset, yoffset, 0);
     Rectangle sourceArea(x, y, width, height);
@@ -3729,8 +3736,7 @@ void Context::copyTexSubImage3D(TextureTarget target,
         return;
     }
 
-    // Only sync the read FBO
-    ANGLE_CONTEXT_TRY(mState.syncDirtyObject(this, GL_READ_FRAMEBUFFER));
+    ANGLE_CONTEXT_TRY(mState.syncDirtyObjects(this, mCopyImageDirtyObjects));
 
     Offset destOffset(xoffset, yoffset, zoffset);
     Rectangle sourceArea(x, y, width, height);
@@ -4510,6 +4516,7 @@ void Context::colorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolea
 {
     mState.setColorMask(ConvertToBool(red), ConvertToBool(green), ConvertToBool(blue),
                         ConvertToBool(alpha));
+    mStateCache.onColorMaskChange(this);
 }
 
 void Context::cullFace(CullFaceMode mode)
@@ -7690,7 +7697,7 @@ bool Context::getQueryParameterInfo(GLenum pname, GLenum *type, unsigned int *nu
         return true;
     }
 
-    if (getExtensions().multiview2 && pname == GL_MAX_VIEWS_OVR)
+    if ((getExtensions().multiview2 || getExtensions().multiview) && pname == GL_MAX_VIEWS_OVR)
     {
         *type      = GL_INT;
         *numParams = 1;
@@ -8119,13 +8126,13 @@ void Context::onSubjectStateChange(const Context *context,
         case kVertexArraySubjectIndex:
             switch (message)
             {
-                case angle::SubjectMessage::CONTENTS_CHANGED:
+                case angle::SubjectMessage::ContentsChanged:
                     mState.setObjectDirty(GL_VERTEX_ARRAY);
                     mStateCache.onVertexArrayBufferContentsChange(this);
                     break;
-                case angle::SubjectMessage::RESOURCE_MAPPED:
-                case angle::SubjectMessage::RESOURCE_UNMAPPED:
-                case angle::SubjectMessage::BINDING_CHANGED:
+                case angle::SubjectMessage::SubjectMapped:
+                case angle::SubjectMessage::SubjectUnmapped:
+                case angle::SubjectMessage::BindingChanged:
                     mStateCache.onVertexArrayBufferStateChange(this);
                     break;
                 default:
@@ -8134,17 +8141,13 @@ void Context::onSubjectStateChange(const Context *context,
             break;
 
         case kReadFramebufferSubjectIndex:
-            if (message == angle::SubjectMessage::STORAGE_CHANGED)
-            {
-                mState.setObjectDirty(GL_READ_FRAMEBUFFER);
-            }
+            ASSERT(message == angle::SubjectMessage::DirtyBitsFlagged);
+            mState.setReadFramebufferDirty();
             break;
 
         case kDrawFramebufferSubjectIndex:
-            if (message == angle::SubjectMessage::STORAGE_CHANGED)
-            {
-                mState.setDrawFramebufferDirty();
-            }
+            ASSERT(message == angle::SubjectMessage::DirtyBitsFlagged);
+            mState.setDrawFramebufferDirty();
             mStateCache.onDrawFramebufferChange(this);
             break;
 
@@ -8271,7 +8274,8 @@ void ErrorSet::handleError(GLenum errorCode,
                            const char *function,
                            unsigned int line)
 {
-    if (errorCode == GL_OUT_OF_MEMORY && mContext->getWorkarounds().loseContextOnOutOfMemory)
+    if (errorCode == GL_OUT_OF_MEMORY &&
+        mContext->getWorkarounds().loseContextOnOutOfMemory.enabled)
     {
         mContext->markContextLost(GraphicsResetStatus::UnknownContextReset);
     }
@@ -8518,6 +8522,11 @@ void StateCache::onActiveTransformFeedbackChange(Context *context)
 }
 
 void StateCache::onUniformBufferStateChange(Context *context)
+{
+    updateBasicDrawStatesError();
+}
+
+void StateCache::onColorMaskChange(Context *context)
 {
     updateBasicDrawStatesError();
 }

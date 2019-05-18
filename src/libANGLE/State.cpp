@@ -580,11 +580,6 @@ const RasterizerState &State::getRasterizerState() const
     return mRasterizer;
 }
 
-const BlendState &State::getBlendState() const
-{
-    return mBlend;
-}
-
 const DepthStencilState &State::getDepthStencilState() const
 {
     return mDepthStencil;
@@ -2092,7 +2087,7 @@ angle::Result State::getIntegerv(const Context *context, GLenum pname, GLint *pa
             *params = mStencilRef;
             break;
         case GL_STENCIL_VALUE_MASK:
-            *params = CastMaskValue(context, mDepthStencil.stencilMask);
+            *params = CastMaskValue(mDepthStencil.stencilMask);
             break;
         case GL_STENCIL_BACK_FUNC:
             *params = mDepthStencil.stencilBackFunc;
@@ -2101,7 +2096,7 @@ angle::Result State::getIntegerv(const Context *context, GLenum pname, GLint *pa
             *params = mStencilBackRef;
             break;
         case GL_STENCIL_BACK_VALUE_MASK:
-            *params = CastMaskValue(context, mDepthStencil.stencilBackMask);
+            *params = CastMaskValue(mDepthStencil.stencilBackMask);
             break;
         case GL_STENCIL_FAIL:
             *params = mDepthStencil.stencilFail;
@@ -2143,10 +2138,10 @@ angle::Result State::getIntegerv(const Context *context, GLenum pname, GLint *pa
             *params = mBlend.blendEquationAlpha;
             break;
         case GL_STENCIL_WRITEMASK:
-            *params = CastMaskValue(context, mDepthStencil.stencilWritemask);
+            *params = CastMaskValue(mDepthStencil.stencilWritemask);
             break;
         case GL_STENCIL_BACK_WRITEMASK:
-            *params = CastMaskValue(context, mDepthStencil.stencilBackWritemask);
+            *params = CastMaskValue(mDepthStencil.stencilBackWritemask);
             break;
         case GL_STENCIL_CLEAR_VALUE:
             *params = mStencilClearValue;
@@ -2557,6 +2552,53 @@ void State::getBooleani_v(GLenum target, GLuint index, GLboolean *data)
     }
 }
 
+angle::Result State::syncTexturesInit(const Context *context)
+{
+    ASSERT(mRobustResourceInit);
+
+    if (!mProgram)
+        return angle::Result::Continue;
+
+    for (size_t textureUnitIndex : mProgram->getActiveSamplersMask())
+    {
+        Texture *texture = mActiveTexturesCache[textureUnitIndex];
+        if (texture)
+        {
+            ANGLE_TRY(texture->ensureInitialized(context));
+        }
+    }
+    return angle::Result::Continue;
+}
+
+angle::Result State::syncImagesInit(const Context *context)
+{
+    ASSERT(mRobustResourceInit);
+    ASSERT(mProgram);
+    for (size_t imageUnitIndex : mProgram->getActiveImagesMask())
+    {
+        Texture *texture = mImageUnits[imageUnitIndex].texture.get();
+        if (texture)
+        {
+            ANGLE_TRY(texture->ensureInitialized(context));
+        }
+    }
+    return angle::Result::Continue;
+}
+
+angle::Result State::syncReadAttachments(const Context *context)
+{
+    ASSERT(mReadFramebuffer);
+    ASSERT(mRobustResourceInit);
+    return mReadFramebuffer->ensureReadAttachmentsInitialized(context);
+}
+
+angle::Result State::syncDrawAttachments(const Context *context)
+{
+    ASSERT(mDrawFramebuffer);
+    ASSERT(mRobustResourceInit);
+    return mDrawFramebuffer->ensureDrawAttachmentsInitialized(context);
+}
+
 angle::Result State::syncReadFramebuffer(const Context *context)
 {
     ASSERT(mReadFramebuffer);
@@ -2567,14 +2609,6 @@ angle::Result State::syncDrawFramebuffer(const Context *context)
 {
     ASSERT(mDrawFramebuffer);
     return mDrawFramebuffer->syncState(context);
-}
-
-angle::Result State::syncDrawAttachments(const Context *context)
-{
-    ASSERT(mDrawFramebuffer);
-    ASSERT(!mDrawFramebuffer->hasAnyDirtyBit());
-    ASSERT(mRobustResourceInit);
-    return mDrawFramebuffer->ensureDrawAttachmentsInitialized(context);
 }
 
 angle::Result State::syncTextures(const Context *context)
@@ -2623,39 +2657,6 @@ angle::Result State::syncVertexArray(const Context *context)
 angle::Result State::syncProgram(const Context *context)
 {
     return mProgram->syncState(context);
-}
-
-angle::Result State::syncTexturesInit(const Context *context)
-{
-    ASSERT(mRobustResourceInit);
-
-    if (!mProgram)
-        return angle::Result::Continue;
-
-    for (size_t textureUnitIndex : mProgram->getActiveSamplersMask())
-    {
-        Texture *texture = mActiveTexturesCache[textureUnitIndex];
-        if (texture)
-        {
-            ANGLE_TRY(texture->ensureInitialized(context));
-        }
-    }
-    return angle::Result::Continue;
-}
-
-angle::Result State::syncImagesInit(const Context *context)
-{
-    ASSERT(mRobustResourceInit);
-    ASSERT(mProgram);
-    for (size_t imageUnitIndex : mProgram->getActiveImagesMask())
-    {
-        Texture *texture = mImageUnits[imageUnitIndex].texture.get();
-        if (texture)
-        {
-            ANGLE_TRY(texture->ensureInitialized(context));
-        }
-    }
-    return angle::Result::Continue;
 }
 
 angle::Result State::syncDirtyObject(const Context *context, GLenum target)

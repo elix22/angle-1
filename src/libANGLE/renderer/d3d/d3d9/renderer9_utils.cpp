@@ -658,6 +658,10 @@ void GenerateCaps(IDirect3D9 *d3d9,
     extensions->mapBuffer         = false;
     extensions->mapBufferRange    = false;
 
+    // D3D does not allow depth textures to have more than one mipmap level OES_depth_texture
+    // allows for that so we can't implement full support with the D3D9 back end.
+    extensions->depthTextureOES = false;
+
     // textureRG is emulated and not performant.
     extensions->textureRG = false;
 
@@ -673,7 +677,8 @@ void GenerateCaps(IDirect3D9 *d3d9,
         // Disable depth texture support on AMD cards (See ANGLE issue 839)
         if (IsAMD(adapterId.VendorId))
         {
-            extensions->depthTextures = false;
+            extensions->depthTextureANGLE = false;
+            extensions->depthTextureOES   = false;
         }
     }
     else
@@ -710,14 +715,14 @@ void GenerateCaps(IDirect3D9 *d3d9,
     extensions->robustBufferAccessBehavior = false;
     extensions->blendMinMax                = true;
     // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/format-support-for-direct3d-feature-level-9-1-hardware
-    extensions->floatBlend                 = false;
-    extensions->framebufferBlit            = true;
-    extensions->framebufferMultisample     = true;
-    extensions->instancedArraysANGLE       = deviceCaps.PixelShaderVersion >= D3DPS_VERSION(3, 0);
+    extensions->floatBlend             = false;
+    extensions->framebufferBlit        = true;
+    extensions->framebufferMultisample = true;
+    extensions->instancedArraysANGLE   = deviceCaps.PixelShaderVersion >= D3DPS_VERSION(3, 0);
     // D3D9 requires at least one attribute that has a divisor of 0, which isn't required by the EXT
     // extension
-    extensions->instancedArraysEXT         = false;
-    extensions->packReverseRowOrder        = true;
+    extensions->instancedArraysEXT  = false;
+    extensions->packReverseRowOrder = true;
     extensions->standardDerivatives =
         (deviceCaps.PS20Caps.Caps & D3DPS20CAPS_GRADIENTINSTRUCTIONS) != 0;
     extensions->shaderTextureLOD       = true;
@@ -791,21 +796,18 @@ void MakeValidSize(bool isImage,
     *levelOffset = upsampleCount;
 }
 
-angle::WorkaroundsD3D GenerateWorkarounds()
+void GenerateWorkarounds(angle::WorkaroundsD3D *workarounds)
 {
-    angle::WorkaroundsD3D workarounds;
-    workarounds.mrtPerfWorkaround                = true;
-    workarounds.setDataFasterThanImageUpload     = false;
-    workarounds.useInstancedPointSpriteEmulation = false;
+    workarounds->mrtPerfWorkaround.enabled                = true;
+    workarounds->setDataFasterThanImageUpload.enabled     = false;
+    workarounds->useInstancedPointSpriteEmulation.enabled = false;
 
     // TODO(jmadill): Disable workaround when we have a fixed compiler DLL.
-    workarounds.expandIntegerPowExpressions = true;
+    workarounds->expandIntegerPowExpressions.enabled = true;
 
     // Call platform hooks for testing overrides.
     auto *platform = ANGLEPlatformCurrent();
-    platform->overrideWorkaroundsD3D(platform, &workarounds);
-
-    return workarounds;
+    platform->overrideWorkaroundsD3D(platform, workarounds);
 }
 
 }  // namespace d3d9

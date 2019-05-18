@@ -2699,7 +2699,7 @@ const char *ValidateDrawStates(Context *context)
             return kTextureTypeConflict;
         }
 
-        if (extensions.multiview2)
+        if (extensions.multiview || extensions.multiview2)
         {
             const int programNumViews     = program->usesMultiview() ? program->getNumViews() : 1;
             const int framebufferNumViews = framebuffer->getNumViews();
@@ -2778,16 +2778,20 @@ const char *ValidateDrawStates(Context *context)
                 return kVertexShaderTypeMismatch;
             }
 
-            // Detect that if there's active color buffer without fragment shader output
-            if (!ValidateFragmentShaderColorBufferMaskMatch(context))
+            if (!context->getState().getRasterizerState().rasterizerDiscard &&
+                !context->getState().getBlendState().allChannelsMasked())
             {
-                return kDrawBufferMaskMismatch;
-            }
+                // Detect that if there's active color buffer without fragment shader output
+                if (!ValidateFragmentShaderColorBufferMaskMatch(context))
+                {
+                    return kDrawBufferMaskMismatch;
+                }
 
-            // Detect that the color buffer types match the fragment shader output types
-            if (!ValidateFragmentShaderColorBufferTypeMatch(context))
-            {
-                return kDrawBufferTypeMismatch;
+                // Detect that the color buffer types match the fragment shader output types
+                if (!ValidateFragmentShaderColorBufferTypeMatch(context))
+                {
+                    return kDrawBufferTypeMismatch;
+                }
             }
 
             const VertexArray *vao = context->getState().getVertexArray();
@@ -3860,7 +3864,8 @@ bool ValidateGetFramebufferAttachmentParameterivBase(Context *context,
 
         case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR:
         case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR:
-            if (clientVersion < 3 || !context->getExtensions().multiview2)
+            if (clientVersion < 3 ||
+                !(context->getExtensions().multiview || context->getExtensions().multiview2))
             {
                 context->validationError(GL_INVALID_ENUM, kEnumNotSupported);
                 return false;

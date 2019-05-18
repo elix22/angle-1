@@ -25,12 +25,17 @@ std::shared_ptr<WaitableCompileEvent> ShaderVk::compile(const gl::Context *conte
                                                         gl::ShCompilerInstance *compilerInstance,
                                                         ShCompileOptions options)
 {
-    ShCompileOptions compileOptions =
-        SH_INITIALIZE_UNINITIALIZED_LOCALS | SH_REDEFINE_INTERFACE_LAYOUT_QUALIFIERS_WITH_STD;
+    ShCompileOptions compileOptions = SH_INITIALIZE_UNINITIALIZED_LOCALS;
 
     ContextVk *contextVk = vk::GetImpl(context);
 
-    if (contextVk->getFeatures().clampPointSize)
+    bool isWebGL = context->getExtensions().webglCompatibility;
+    if (isWebGL && mData.getShaderType() != gl::ShaderType::Compute)
+    {
+        compileOptions |= SH_INIT_OUTPUT_VARIABLES;
+    }
+
+    if (contextVk->getFeatures().clampPointSize.enabled)
     {
         compileOptions |= SH_CLAMP_POINT_SIZE;
     }

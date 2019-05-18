@@ -995,7 +995,7 @@ void Texture::signalDirtyStorage(const Context *context, InitState initState)
     mState.mInitState = initState;
     invalidateCompletenessCache();
     mState.mCachedSamplerFormatValid = false;
-    onStateChange(context, angle::SubjectMessage::STORAGE_CHANGED);
+    onStateChange(context, angle::SubjectMessage::SubjectChanged);
 }
 
 void Texture::signalDirtyState(const Context *context, size_t dirtyBit)
@@ -1003,7 +1003,7 @@ void Texture::signalDirtyState(const Context *context, size_t dirtyBit)
     mDirtyBits.set(dirtyBit);
     invalidateCompletenessCache();
     mState.mCachedSamplerFormatValid = false;
-    onStateChange(context, angle::SubjectMessage::DEPENDENT_DIRTY_BITS);
+    onStateChange(context, angle::SubjectMessage::DirtyBitsFlagged);
 }
 
 angle::Result Texture::setImage(Context *context,
@@ -1120,9 +1120,6 @@ angle::Result Texture::copyImage(Context *context,
     ANGLE_TRY(releaseTexImageInternal(context));
     ANGLE_TRY(orphanImages(context));
 
-    // Ensure source FBO is initialized.
-    ANGLE_TRY(source->ensureReadAttachmentInitialized(context, GL_COLOR_BUFFER_BIT));
-
     // Use the source FBO size as the init image area.
     Box destBox(0, 0, 0, sourceArea.width, sourceArea.height, 1);
     ANGLE_TRY(ensureSubImageInitialized(context, target, level, destBox));
@@ -1153,9 +1150,6 @@ angle::Result Texture::copySubImage(Context *context,
                                     Framebuffer *source)
 {
     ASSERT(TextureTargetToType(index.getTarget()) == mState.mType);
-
-    // Ensure source FBO is initialized.
-    ANGLE_TRY(source->ensureReadAttachmentInitialized(context, GL_COLOR_BUFFER_BIT));
 
     Box destBox(destOffset.x, destOffset.y, destOffset.z, sourceArea.width, sourceArea.height, 1);
     ANGLE_TRY(
@@ -1801,10 +1795,8 @@ void Texture::onSubjectStateChange(const gl::Context *context,
                                    angle::SubjectIndex index,
                                    angle::SubjectMessage message)
 {
-    if (message == angle::SubjectMessage::DEPENDENT_DIRTY_BITS)
-    {
-        mDirtyBits.set(DIRTY_BIT_IMPLEMENTATION);
-        signalDirtyState(context, DIRTY_BIT_IMPLEMENTATION);
-    }
+    ASSERT(message == angle::SubjectMessage::SubjectChanged);
+    mDirtyBits.set(DIRTY_BIT_IMPLEMENTATION);
+    signalDirtyState(context, DIRTY_BIT_IMPLEMENTATION);
 }
 }  // namespace gl

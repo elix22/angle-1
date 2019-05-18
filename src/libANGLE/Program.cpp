@@ -1364,7 +1364,8 @@ angle::Result Program::link(const Context *context)
             data.getCaps().maxVaryingVectors, packMode, &mState.mUniformBlocks, &mState.mUniforms,
             &mState.mShaderStorageBlocks, &mState.mBufferVariables, &mState.mAtomicCounterBuffers));
 
-        if (!linkAttributes(context->getCaps(), mInfoLog))
+        if (!linkAttributes(context->getCaps(), mInfoLog,
+                            context->getExtensions().webglCompatibility))
         {
             return angle::Result::Continue;
         }
@@ -1480,9 +1481,9 @@ void Program::resolveLinkImpl(const Context *context)
 
     // Save to the program cache.
     auto *cache = linkingState->context->getMemoryProgramCache();
-    if (cache &&
-        (mState.mLinkedTransformFeedbackVaryings.empty() ||
-         !linkingState->context->getWorkarounds().disableProgramCachingForTransformFeedback))
+    if (cache && (mState.mLinkedTransformFeedbackVaryings.empty() ||
+                  !linkingState->context->getWorkarounds()
+                       .disableProgramCachingForTransformFeedback.enabled))
     {
         cache->putProgram(linkingState->programHash, linkingState->context, this);
     }
@@ -3132,7 +3133,7 @@ bool Program::linkAtomicCounterBuffers()
 }
 
 // Assigns locations to all attributes from the bindings and program locations.
-bool Program::linkAttributes(const Caps &caps, InfoLog &infoLog)
+bool Program::linkAttributes(const Caps &caps, InfoLog &infoLog, bool webglCompatibility)
 {
     Shader *vertexShader = mState.getAttachedShader(ShaderType::Vertex);
 
@@ -3196,10 +3197,10 @@ bool Program::linkAttributes(const Caps &caps, InfoLog &infoLog)
                 // In GLSL ES 3.00.6 and in WebGL, attribute aliasing produces a link error.
                 // In non-WebGL GLSL ES 1.00.17, attribute aliasing is allowed with some
                 // restrictions - see GLSL ES 1.00.17 section 2.10.4, but ANGLE currently has a bug.
+                // TODO: Remaining failures: http://anglebug.com/3252
                 if (linkedAttribute)
                 {
-                    // TODO(jmadill): fix aliasing on ES2
-                    // if (shaderVersion >= 300 && !webgl)
+                    if (shaderVersion >= 300 || webglCompatibility)
                     {
                         infoLog << "Attribute '" << attribute.name << "' aliases attribute '"
                                 << linkedAttribute->name << "' at location " << regLocation;
@@ -4463,7 +4464,7 @@ void Program::serialize(const Context *context, angle::MemoryBuffer *binaryOut) 
 
     // Warn the app layer if saving a binary with unsupported transform feedback.
     if (!mState.getLinkedTransformFeedbackVaryings().empty() &&
-        context->getWorkarounds().disableProgramCachingForTransformFeedback)
+        context->getWorkarounds().disableProgramCachingForTransformFeedback.enabled)
     {
         WARN() << "Saving program binary with transform feedback, which is not supported on this "
                   "driver.";
@@ -4682,7 +4683,7 @@ angle::Result Program::deserialize(const Context *context,
 
     // Reject programs that use transform feedback varyings if the hardware cannot support them.
     if (transformFeedbackVaryingCount > 0 &&
-        context->getWorkarounds().disableProgramCachingForTransformFeedback)
+        context->getWorkarounds().disableProgramCachingForTransformFeedback.enabled)
     {
         infoLog << "Current driver does not support transform feedback in binary programs.";
         return angle::Result::Incomplete;

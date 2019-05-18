@@ -26,8 +26,6 @@ class GLSLTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    virtual void SetUp() { ANGLETest::SetUp(); }
-
     std::string GenerateVaryingType(GLint vectorSize)
     {
         char varyingType[10];
@@ -499,14 +497,10 @@ class GLSLTestNoValidation : public GLSLTest
 };
 
 class GLSLTest_ES3 : public GLSLTest
-{
-    void SetUp() override { ANGLETest::SetUp(); }
-};
+{};
 
 class GLSLTest_ES31 : public GLSLTest
-{
-    void SetUp() override { ANGLETest::SetUp(); }
-};
+{};
 
 std::string BuillBigInitialStackShader(int length)
 {
@@ -2411,10 +2405,6 @@ TEST_P(GLSLTest_ES3, UnaryMinusOperatorSignedInt)
 // Convers a bug with the unary minus operator on unsigned integer workaround.
 TEST_P(GLSLTest_ES3, UnaryMinusOperatorUnsignedInt)
 {
-    // TODO(syoussefi): missing [gs]etUniform support with unsigned formats.
-    // http://anglebug.com/2392
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     constexpr char kVS[] =
         "#version 300 es\n"
         "in highp vec4 position;\n"
@@ -4413,10 +4403,6 @@ void main()
 // Test that a varying struct that's defined as a part of the declaration is handled correctly.
 TEST_P(GLSLTest_ES3, VaryingStructWithInlineDefinition)
 {
-    // TODO(syoussefi): missing ES3 shader feature support.
-    // http://anglebug.com/3199
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     constexpr char kVS[] = R"(#version 300 es
 in vec4 inputAttribute;
 
@@ -4513,10 +4499,6 @@ void main() {
 // is handled correctly.
 TEST_P(GLSLTest_ES3, FlatVaryingUsedInFoldedTernary)
 {
-    // TODO(syoussefi): missing ES3 shader feature support.
-    // http://anglebug.com/3219
-    ANGLE_SKIP_TEST_IF(IsVulkan());
-
     constexpr char kVS[] = R"(#version 300 es
 
 in vec4 inputAttribute;

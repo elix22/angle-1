@@ -174,7 +174,8 @@ Extensions::Extensions()
       compressedEACRG11SignedTexture(false),
       compressedTextureETC(false),
       sRGB(false),
-      depthTextures(false),
+      depthTextureANGLE(false),
+      depthTextureOES(false),
       depth32(false),
       textureStorage(false),
       textureNPOT(false),
@@ -197,8 +198,9 @@ Extensions::Extensions()
       standardDerivatives(false),
       shaderTextureLOD(false),
       fragDepth(false),
-      multiview2(false),
+      multiview(false),
       maxViews(1u),
+      multiview2(false),
       textureUsage(false),
       translatedShaderSource(false),
       fboRenderMipmap(false),
@@ -653,12 +655,23 @@ static bool DetermineSRGBTextureSupport(const TextureCapsMap &textureCaps)
 }
 
 // Check for GL_ANGLE_depth_texture
-static bool DetermineDepthTextureSupport(const TextureCapsMap &textureCaps)
+static bool DetermineDepthTextureANGLESupport(const TextureCapsMap &textureCaps)
 {
     constexpr GLenum requiredFormats[] = {
         GL_DEPTH_COMPONENT16,
         GL_DEPTH_COMPONENT32_OES,
         GL_DEPTH24_STENCIL8_OES,
+    };
+
+    return GetFormatSupport(textureCaps, requiredFormats, true, true, true, true);
+}
+
+// Check for GL_OES_depth_texture
+static bool DetermineDepthTextureOESSupport(const TextureCapsMap &textureCaps)
+{
+    constexpr GLenum requiredFormats[] = {
+        GL_DEPTH_COMPONENT16,
+        GL_DEPTH_COMPONENT32_OES,
     };
 
     return GetFormatSupport(textureCaps, requiredFormats, true, true, true, true);
@@ -783,7 +796,8 @@ void Extensions::setTextureExtensionSupport(const TextureCapsMap &textureCaps)
     compressedEACRG11UnsignedTexture = DetermineEACRG11UnsignedTextureSupport(textureCaps);
     compressedEACRG11SignedTexture   = DetermineEACRG11SignedTextureSupport(textureCaps);
     sRGB                             = DetermineSRGBTextureSupport(textureCaps);
-    depthTextures                    = DetermineDepthTextureSupport(textureCaps);
+    depthTextureANGLE                = DetermineDepthTextureANGLESupport(textureCaps);
+    depthTextureOES                  = DetermineDepthTextureOESSupport(textureCaps);
     depth32                          = DetermineDepth32Support(textureCaps);
     colorBufferFloatRGB              = DetermineColorBufferFloatRGBSupport(textureCaps);
     colorBufferFloatRGBA             = DetermineColorBufferFloatRGBASupport(textureCaps);
@@ -845,7 +859,8 @@ const ExtensionInfoMap &GetExtensionInfoMap()
         map["OES_compressed_EAC_RG11_signed_texture"] = enableableExtension(&Extensions::compressedEACRG11SignedTexture);
         map["GL_CHROMIUM_compressed_texture_etc"] = enableableExtension(&Extensions::compressedTextureETC);
         map["GL_EXT_sRGB"] = enableableExtension(&Extensions::sRGB);
-        map["GL_ANGLE_depth_texture"] = esOnlyExtension(&Extensions::depthTextures);
+        map["GL_ANGLE_depth_texture"] = esOnlyExtension(&Extensions::depthTextureANGLE);
+        map["GL_OES_depth_texture"] = esOnlyExtension(&Extensions::depthTextureOES);
         map["GL_OES_depth32"] = esOnlyExtension(&Extensions::depth32);
         map["GL_EXT_texture_storage"] = enableableExtension(&Extensions::textureStorage);
         map["GL_OES_texture_npot"] = enableableExtension(&Extensions::textureNPOT);
@@ -865,6 +880,7 @@ const ExtensionInfoMap &GetExtensionInfoMap()
         map["GL_OES_standard_derivatives"] = enableableExtension(&Extensions::standardDerivatives);
         map["GL_EXT_shader_texture_lod"] = enableableExtension(&Extensions::shaderTextureLOD);
         map["GL_EXT_frag_depth"] = enableableExtension(&Extensions::fragDepth);
+        map["GL_OVR_multiview"] = enableableExtension(&Extensions::multiview);
         map["GL_OVR_multiview2"] = enableableExtension(&Extensions::multiview2);
         map["GL_ANGLE_texture_usage"] = enableableExtension(&Extensions::textureUsage);
         map["GL_ANGLE_translated_shader_source"] = esOnlyExtension(&Extensions::translatedShaderSource);

@@ -33,7 +33,6 @@
 #include "compiler/translator/tree_ops/InitializeVariables.h"
 #include "compiler/translator/tree_ops/PruneEmptyCases.h"
 #include "compiler/translator/tree_ops/PruneNoOps.h"
-#include "compiler/translator/tree_ops/RedefineInterfaceBlockLayoutQualifiersWithStd.h"
 #include "compiler/translator/tree_ops/RegenerateStructNames.h"
 #include "compiler/translator/tree_ops/RemoveArrayLengthMethod.h"
 #include "compiler/translator/tree_ops/RemoveInvariantDeclaration.h"
@@ -50,6 +49,7 @@
 #include "compiler/translator/tree_ops/VectorizeVectorScalarArithmetic.h"
 #include "compiler/translator/tree_util/BuiltIn_autogen.h"
 #include "compiler/translator/tree_util/IntermNodePatternMatcher.h"
+#include "compiler/translator/tree_util/ReplaceShadowingVariables.h"
 #include "compiler/translator/util.h"
 #include "third_party/compiler/ArrayBoundsClamper.h"
 
@@ -538,6 +538,10 @@ bool TCompiler::checkAndSimplifyAST(TIntermBlock *root,
             return false;
         }
     }
+    if (IsSpecWithFunctionBodyNewScope(mShaderSpec, mShaderVersion))
+    {
+        ReplaceShadowingVariables(root, &mSymbolTable);
+    }
 
     if (mShaderVersion >= 310 && !ValidateVaryingLocations(root, &mDiagnostics, mShaderType))
     {
@@ -565,7 +569,8 @@ bool TCompiler::checkAndSimplifyAST(TIntermBlock *root,
     }
 
     if ((compileOptions & SH_INITIALIZE_BUILTINS_FOR_INSTANCED_MULTIVIEW) &&
-        parseContext.isExtensionEnabled(TExtension::OVR_multiview2) &&
+        (parseContext.isExtensionEnabled(TExtension::OVR_multiview2) ||
+         parseContext.isExtensionEnabled(TExtension::OVR_multiview)) &&
         getShaderType() != GL_COMPUTE_SHADER)
     {
         DeclareAndInitBuiltinsForInstancedMultiview(root, mNumViews, mShaderType, compileOptions,
@@ -721,13 +726,6 @@ bool TCompiler::checkAndSimplifyAST(TIntermBlock *root,
         {
             return false;
         }
-    }
-
-    if (compileOptions & SH_REDEFINE_INTERFACE_LAYOUT_QUALIFIERS_WITH_STD)
-    {
-        // Change the interface block layouts based on GL_KHR_vulkan_glsl.  Only std140 and std430
-        // are allowed in Vulkan GLSL.
-        RedefineInterfaceBlockLayoutQualifiersWithStd(root, &mSymbolTable);
     }
 
     if (shouldCollectVariables(compileOptions))
@@ -975,6 +973,7 @@ void TCompiler::setResourceString()
         << ":NV_shader_framebuffer_fetch:" << mResources.NV_shader_framebuffer_fetch
         << ":ARM_shader_framebuffer_fetch:" << mResources.ARM_shader_framebuffer_fetch
         << ":OVR_multiview2:" << mResources.OVR_multiview2
+        << ":OVR_multiview:" << mResources.OVR_multiview
         << ":EXT_YUV_target:" << mResources.EXT_YUV_target
         << ":EXT_geometry_shader:" << mResources.EXT_geometry_shader
         << ":MaxVertexOutputVectors:" << mResources.MaxVertexOutputVectors

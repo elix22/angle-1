@@ -72,20 +72,14 @@ void main()
         ASSERT_GL_NO_ERROR();
     }
 
-    void SetUp() override
-    {
-        ANGLETest::SetUp();
+    void testSetUp() override { setUpFramebuffer(); }
 
-        setUpFramebuffer();
-    }
-
-    void TearDown() override
+    void testTearDown() override
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDeleteFramebuffers(1, &mFramebuffer);
         glDeleteTextures(1, &mFramebufferColorTexture);
         glDeleteProgram(mProgram);
-        ANGLETest::TearDown();
     }
 
     void setUpFramebuffer()
@@ -155,18 +149,18 @@ void main()
         ASSERT_NE(-1, mTexture2DUniformLocation);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        TexCoordDrawTest::SetUp();
+        TexCoordDrawTest::testSetUp();
         mTexture2D = create2DTexture();
 
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(1, &mTexture2D);
-        TexCoordDrawTest::TearDown();
+        TexCoordDrawTest::testTearDown();
     }
 
     // Tests CopyTexSubImage with floating point textures of various formats.
@@ -350,9 +344,9 @@ class Texture2DTestES3 : public Texture2DTest
                "}\n";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        Texture2DTest::SetUp();
+        Texture2DTest::testSetUp();
         setUpProgram();
     }
 };
@@ -389,9 +383,9 @@ class Texture2DIntegerAlpha1TestES3 : public Texture2DTest
                "}\n";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        Texture2DTest::SetUp();
+        Texture2DTest::testSetUp();
         setUpProgram();
     }
 };
@@ -428,9 +422,9 @@ class Texture2DUnsignedIntegerAlpha1TestES3 : public Texture2DTest
                "}\n";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        Texture2DTest::SetUp();
+        Texture2DTest::testSetUp();
         setUpProgram();
     }
 };
@@ -456,9 +450,9 @@ class Texture2DTestWithDrawScale : public Texture2DTest
             })";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        Texture2DTest::SetUp();
+        Texture2DTest::testSetUp();
 
         setUpProgram();
 
@@ -497,9 +491,9 @@ class Sampler2DAsFunctionParameterTest : public Texture2DTest
             })";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        Texture2DTest::SetUp();
+        Texture2DTest::testSetUp();
         setUpProgram();
     }
 };
@@ -530,9 +524,9 @@ class TextureCubeTest : public TexCoordDrawTest
             })";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        TexCoordDrawTest::SetUp();
+        TexCoordDrawTest::testSetUp();
 
         glGenTextures(1, &mTextureCube);
         glBindTexture(GL_TEXTURE_CUBE_MAP, mTextureCube);
@@ -553,10 +547,10 @@ class TextureCubeTest : public TexCoordDrawTest
         ASSERT_NE(-1, mTextureCubeUniformLocation);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(1, &mTextureCube);
-        TexCoordDrawTest::TearDown();
+        TexCoordDrawTest::testTearDown();
     }
 
     GLuint mTexture2D;
@@ -595,9 +589,9 @@ class SamplerArrayTest : public TexCoordDrawTest
             })";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        TexCoordDrawTest::SetUp();
+        TexCoordDrawTest::testSetUp();
 
         setUpProgram();
 
@@ -611,11 +605,11 @@ class SamplerArrayTest : public TexCoordDrawTest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(1, &mTexture2DA);
         glDeleteTextures(1, &mTexture2DB);
-        TexCoordDrawTest::TearDown();
+        TexCoordDrawTest::testTearDown();
     }
 
     void testSamplerArrayDraw()
@@ -705,9 +699,9 @@ class Texture2DArrayTestES3 : public TexCoordDrawTest
                "}\n";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        TexCoordDrawTest::SetUp();
+        TexCoordDrawTest::testSetUp();
 
         setUpProgram();
 
@@ -718,10 +712,10 @@ class Texture2DArrayTestES3 : public TexCoordDrawTest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(1, &m2DArrayTexture);
-        TexCoordDrawTest::TearDown();
+        TexCoordDrawTest::testTearDown();
     }
 
     GLuint m2DArrayTexture;
@@ -755,9 +749,9 @@ class TextureSizeTextureArrayTest : public TexCoordDrawTest
                "}\n";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        TexCoordDrawTest::SetUp();
+        TexCoordDrawTest::testSetUp();
 
         setUpProgram();
 
@@ -771,11 +765,11 @@ class TextureSizeTextureArrayTest : public TexCoordDrawTest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(1, &mTexture2DA);
         glDeleteTextures(1, &mTexture2DB);
-        TexCoordDrawTest::TearDown();
+        TexCoordDrawTest::testTearDown();
     }
 
     GLuint mTexture2DA;
@@ -814,9 +808,9 @@ class Texture3DTestES3 : public TexCoordDrawTest
                "}\n";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        TexCoordDrawTest::SetUp();
+        TexCoordDrawTest::testSetUp();
 
         glGenTextures(1, &mTexture3D);
 
@@ -826,10 +820,10 @@ class Texture3DTestES3 : public TexCoordDrawTest
         ASSERT_NE(-1, mTexture3DUniformLocation);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(1, &mTexture3D);
-        TexCoordDrawTest::TearDown();
+        TexCoordDrawTest::testTearDown();
     }
 
     GLuint mTexture3D;
@@ -876,9 +870,9 @@ class ShadowSamplerPlusSampler3DTestES3 : public TexCoordDrawTest
                "}\n";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        TexCoordDrawTest::SetUp();
+        TexCoordDrawTest::testSetUp();
 
         glGenTextures(1, &mTexture3D);
 
@@ -896,11 +890,11 @@ class ShadowSamplerPlusSampler3DTestES3 : public TexCoordDrawTest
         ASSERT_NE(-1, mDepthRefUniformLocation);
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(1, &mTextureShadow);
         glDeleteTextures(1, &mTexture3D);
-        TexCoordDrawTest::TearDown();
+        TexCoordDrawTest::testTearDown();
     }
 
     GLuint mTextureShadow;
@@ -959,9 +953,9 @@ class SamplerTypeMixTestES3 : public TexCoordDrawTest
                "}\n";
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        TexCoordDrawTest::SetUp();
+        TexCoordDrawTest::testSetUp();
 
         glGenTextures(1, &mTexture2D);
         glGenTextures(1, &mTextureCube);
@@ -990,13 +984,13 @@ class SamplerTypeMixTestES3 : public TexCoordDrawTest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(1, &mTexture2D);
         glDeleteTextures(1, &mTextureCube);
         glDeleteTextures(1, &mTexture2DShadow);
         glDeleteTextures(1, &mTextureCubeShadow);
-        TexCoordDrawTest::TearDown();
+        TexCoordDrawTest::testTearDown();
     }
 
     GLuint mTexture2D;
@@ -1182,6 +1176,59 @@ class Texture2DIntegerTestES3 : public Texture2DTest
                "    fragColor = vec4(texture(tex, texcoord));\n"
                "}\n";
     }
+};
+
+class TextureCubeIntegerTestES3 : public TexCoordDrawTest
+{
+  protected:
+    TextureCubeIntegerTestES3()
+        : TexCoordDrawTest(), mTextureCube(0), mTextureCubeUniformLocation(-1)
+    {}
+
+    const char *getVertexShaderSource() override
+    {
+        return "#version 300 es\n"
+               "out vec2 texcoord;\n"
+               "in vec4 position;\n"
+               "void main()\n"
+               "{\n"
+               "    gl_Position = vec4(position.xy, 0.0, 1.0);\n"
+               "    texcoord = 0.5*position.xy;\n"
+               "}\n";
+    }
+
+    const char *getFragmentShaderSource() override
+    {
+        return "#version 300 es\n"
+               "precision highp float;\n"
+               "precision highp usamplerCube;\n"
+               "uniform usamplerCube texCube;\n"
+               "in vec2 texcoord;\n"
+               "out vec4 fragColor;\n"
+               "void main()\n"
+               "{\n"
+               "    fragColor = vec4(texture(texCube, vec3(texcoord, 1)))/255.0;\n"
+               "}\n";
+    }
+
+    void testSetUp() override
+    {
+        TexCoordDrawTest::testSetUp();
+        glGenTextures(1, &mTextureCube);
+        setUpProgram();
+
+        mTextureCubeUniformLocation = glGetUniformLocation(mProgram, "texCube");
+        ASSERT_NE(-1, mTextureCubeUniformLocation);
+    }
+
+    void testTearDown() override
+    {
+        glDeleteTextures(1, &mTextureCube);
+        TexCoordDrawTest::testTearDown();
+    }
+
+    GLuint mTextureCube;
+    GLint mTextureCubeUniformLocation;
 };
 
 TEST_P(Texture2DTest, NegativeAPISubImage)
@@ -3390,10 +3437,8 @@ class TextureLimitsTest : public ANGLETest
         setConfigAlphaBits(8);
     }
 
-    void SetUp() override
+    void testSetUp() override
     {
-        ANGLETest::SetUp();
-
         glGetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &mMaxVertexTextures);
         glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &mMaxFragmentTextures);
         glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &mMaxCombinedTextures);
@@ -3401,7 +3446,7 @@ class TextureLimitsTest : public ANGLETest
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         if (mProgram != 0)
         {
@@ -3413,8 +3458,6 @@ class TextureLimitsTest : public ANGLETest
                 glDeleteTextures(static_cast<GLsizei>(mTextures.size()), &mTextures[0]);
             }
         }
-
-        ANGLETest::TearDown();
     }
 
     void compileProgramWithTextureCounts(const std::string &vertexPrefix,
@@ -3703,9 +3746,9 @@ class Texture2DNorm16TestES3 : public Texture2DTestES3
   protected:
     Texture2DNorm16TestES3() : Texture2DTestES3(), mTextures{0, 0, 0}, mFBO(0), mRenderbuffer(0) {}
 
-    void SetUp() override
+    void testSetUp() override
     {
-        Texture2DTestES3::SetUp();
+        Texture2DTestES3::testSetUp();
 
         glActiveTexture(GL_TEXTURE0);
         glGenTextures(3, mTextures);
@@ -3724,13 +3767,13 @@ class Texture2DNorm16TestES3 : public Texture2DTestES3
         ASSERT_GL_NO_ERROR();
     }
 
-    void TearDown() override
+    void testTearDown() override
     {
         glDeleteTextures(3, mTextures);
         glDeleteFramebuffers(1, &mFBO);
         glDeleteRenderbuffers(1, &mRenderbuffer);
 
-        Texture2DTestES3::TearDown();
+        Texture2DTestES3::testTearDown();
     }
 
     void testNorm16Texture(GLint internalformat, GLenum format, GLenum type)
@@ -4476,6 +4519,9 @@ TEST_P(Texture2DTestES3, MinificationWithSamplerNoMipmapping)
 // texture is output.
 TEST_P(Texture2DIntegerTestES3, IntegerTextureNonZeroBaseLevel)
 {
+    // Flaky on Windows OpenGL drivers. http://crbug.com/963595
+    ANGLE_SKIP_TEST_IF(IsOpenGL() && IsWindows());
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, mTexture2D);
     int width     = getWindowWidth();
@@ -4496,6 +4542,42 @@ TEST_P(Texture2DIntegerTestES3, IntegerTextureNonZeroBaseLevel)
 
     EXPECT_GL_NO_ERROR();
     EXPECT_PIXEL_COLOR_EQ(0, 0, color);
+    EXPECT_PIXEL_COLOR_EQ(width - 1, height - 1, color);
+}
+
+// Draw a quad with an integer cube texture with a non-zero base level, and test that the color of
+// the texture is output.
+TEST_P(TextureCubeIntegerTestES3, IntegerCubeTextureNonZeroBaseLevel)
+{
+    // All output checks returned black, rather than the texture color.
+    ANGLE_SKIP_TEST_IF(IsOSX() && IsOpenGL());
+
+    glActiveTexture(GL_TEXTURE0);
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, mTextureCube);
+    GLint baseLevel = 1;
+    int width       = getWindowWidth();
+    int height      = getWindowHeight();
+    GLColor color   = GLColor::green;
+    std::vector<GLColor> pixels(width * height, color);
+    for (GLenum faceIndex = 0; faceIndex < 6; faceIndex++)
+    {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + faceIndex, baseLevel, GL_RGBA8UI, width,
+                     height, 0, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, pixels.data());
+        EXPECT_GL_NO_ERROR();
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BASE_LEVEL, baseLevel);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glUseProgram(mProgram);
+    glUniform1i(mTextureCubeUniformLocation, 0);
+    drawQuad(mProgram, "position", 0.5f);
+
+    EXPECT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, color);
+    EXPECT_PIXEL_COLOR_EQ(width - 1, 0, color);
+    EXPECT_PIXEL_COLOR_EQ(0, height - 1, color);
     EXPECT_PIXEL_COLOR_EQ(width - 1, height - 1, color);
 }
 
@@ -4599,5 +4681,6 @@ ANGLE_INSTANTIATE_TEST(TextureLimitsTest, ES2_D3D11(), ES2_OPENGL(), ES2_OPENGLE
 ANGLE_INSTANTIATE_TEST(Texture2DNorm16TestES3, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
 ANGLE_INSTANTIATE_TEST(TextureCubeTestES3, ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES());
 ANGLE_INSTANTIATE_TEST(Texture2DIntegerTestES3, ES3_D3D11(), ES3_OPENGL());
+ANGLE_INSTANTIATE_TEST(TextureCubeIntegerTestES3, ES3_D3D11(), ES3_OPENGL());
 
 }  // anonymous namespace

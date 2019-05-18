@@ -141,7 +141,8 @@ class StateCache final : angle::NonCopyable
     // 11. onQueryChange.
     // 12. onActiveTransformFeedbackChange.
     // 13. onUniformBufferStateChange.
-    // 14. onBufferBindingChange.
+    // 14. onColorMaskChange.
+    // 15. onBufferBindingChange.
     bool hasBasicDrawStatesError(Context *context) const
     {
         if (mCachedBasicDrawStatesError == 0)
@@ -233,6 +234,7 @@ class StateCache final : angle::NonCopyable
     void onQueryChange(Context *context);
     void onActiveTransformFeedbackChange(Context *context);
     void onUniformBufferStateChange(Context *context);
+    void onColorMaskChange(Context *context);
     void onBufferBindingChange(Context *context);
 
   private:
@@ -2012,6 +2014,7 @@ class Context final : public egl::LabeledObject, angle::NonCopyable, public angl
     State::DirtyObjects mBlitDirtyObjects;
     State::DirtyBits mComputeDirtyBits;
     State::DirtyObjects mComputeDirtyObjects;
+    State::DirtyObjects mCopyImageDirtyObjects;
 
     Workarounds mWorkarounds;
 

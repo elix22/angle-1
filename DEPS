@@ -9,16 +9,16 @@ vars = {
   'build_with_chromium': False,
 
   # Current revision of dEQP.
-  'deqp_revision': '66a49e0a43f7af654ee1de8a3b1bcaf6c0d14aa4',
+  'deqp_revision': '39894bc13c69b22c4aea018979b7daabc8dfc602',
 
   # Current revision of glslang, the Khronos SPIRV compiler.
-  'glslang_revision': 'c0640dabfddd7d6aa2fbcb58ab669326da8b93f0',
+  'glslang_revision': '6e384fef6c0fcd99395502217737be87b37e2218',
 
   # Current revision fo the SPIRV-Headers Vulkan support library.
-  'spirv_headers_revision': 'c4f8f65792d4bf2657ca751904c511bbcf2ac77b',
+  'spirv_headers_revision': '9674a1a547540ab5e78dd329cf9f7ff9d8c9d057',
 
   # Current revision of SPIRV-Tools for Vulkan.
-  'spirv_tools_revision': '63f57d95d6fad9032db768c34492bf3205a1e3af',
+  'spirv_tools_revision': '9dfd4b8358077bdbe8e2f9388572b5376c370f5d',
 
   # Current revision of Khronos Vulkan-Headers.
   'vulkan_headers_revision': '982f0f84dccf6f281b48318c77261a9028000126',
@@ -81,7 +81,7 @@ deps = {
   },
 
   '{angle_root}/third_party/googletest/src': {
-    'url': '{chromium_git}/external/github.com/google/googletest.git@9997a830ee5589c2da79198bc3b60d1c47e50118',
+    'url': '{chromium_git}/external/github.com/google/googletest.git@3f5b5b8f8493a03fa25f1e4a7eae7678514a431d',
     'condition': 'not build_with_chromium',
   },
 

@@ -386,7 +386,7 @@ ProgramD3DMetadata::ProgramD3DMetadata(RendererD3D *renderer,
     : mRendererMajorShaderModel(renderer->getMajorShaderModel()),
       mShaderModelSuffix(renderer->getShaderModelSuffix()),
       mUsesInstancedPointSpriteEmulation(
-          renderer->getWorkarounds().useInstancedPointSpriteEmulation),
+          renderer->getWorkarounds().useInstancedPointSpriteEmulation.enabled),
       mUsesViewScale(renderer->presentPathFastEnabled()),
       mCanSelectViewInVertexShader(renderer->canSelectViewInVertexShader()),
       mAttachedShaders(attachedShaders)
@@ -531,7 +531,8 @@ class ProgramD3D::GetExecutableTask : public Closure, public d3d::Context
 
     void popError(d3d::Context *context)
     {
-        context->handleResult(mStoredHR, mStoredMessage, mStoredFile, mStoredFunction, mStoredLine);
+        context->handleResult(mStoredHR, mStoredMessage.c_str(), mStoredFile, mStoredFunction,
+                              mStoredLine);
     }
 
   protected:
@@ -540,7 +541,7 @@ class ProgramD3D::GetExecutableTask : public Closure, public d3d::Context
     gl::InfoLog mInfoLog;
     ShaderExecutableD3D *mExecutable = nullptr;
     HRESULT mStoredHR                = S_OK;
-    const char *mStoredMessage       = nullptr;
+    std::string mStoredMessage;
     const char *mStoredFile          = nullptr;
     const char *mStoredFunction      = nullptr;
     unsigned int mStoredLine         = 0;
@@ -693,7 +694,7 @@ bool ProgramD3D::usesGeometryShader(const gl::State &state, const gl::PrimitiveM
 
 bool ProgramD3D::usesInstancedPointSpriteEmulation() const
 {
-    return mRenderer->getWorkarounds().useInstancedPointSpriteEmulation;
+    return mRenderer->getWorkarounds().useInstancedPointSpriteEmulation.enabled;
 }
 
 GLint ProgramD3D::getSamplerMapping(gl::ShaderType type,
@@ -2601,16 +2602,13 @@ void ProgramD3D::setUniformMatrixfvInternal(GLint location,
     unsigned int arrayElementOffset             = uniformLocation.arrayIndex;
     unsigned int elementCount                   = targetUniform->getArraySizeProduct();
 
-    // Internally store matrices as transposed versions to accomodate HLSL matrix indexing
-    transpose = !transpose;
-
     for (gl::ShaderType shaderType : gl::AllShaderTypes())
     {
         if (targetUniform->mShaderData[shaderType])
         {
-            if (SetFloatUniformMatrix<cols, rows>(arrayElementOffset, elementCount, countIn,
-                                                  transpose, value,
-                                                  targetUniform->mShaderData[shaderType]))
+            if (SetFloatUniformMatrixHLSL<cols, rows>(arrayElementOffset, elementCount, countIn,
+                                                      transpose, value,
+                                                      targetUniform->mShaderData[shaderType]))
             {
                 mShaderUniformsDirty.set(shaderType);
             }
@@ -2862,7 +2860,6 @@ void ProgramD3D::reset()
     for (gl::ShaderType shaderType : gl::AllShaderTypes())
     {
         mShaderHLSL[shaderType].clear();
-        mShaderWorkarounds[shaderType] = CompilerWorkaroundsD3D();
     }
 
     mUsesFragDepth            = false;

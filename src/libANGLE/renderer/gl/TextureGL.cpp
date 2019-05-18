@@ -158,7 +158,7 @@ angle::Result TextureGL::setImage(const gl::Context *context,
     gl::TextureTarget target = index.getTarget();
     size_t level             = static_cast<size_t>(index.getLevelIndex());
 
-    if (workarounds.unpackOverlappingRowsSeparatelyUnpackBuffer && unpackBuffer &&
+    if (workarounds.unpackOverlappingRowsSeparatelyUnpackBuffer.enabled && unpackBuffer &&
         unpack.rowLength != 0 && unpack.rowLength < size.width)
     {
         // The rows overlap in unpack memory. Upload the texture row by row to work around
@@ -175,7 +175,7 @@ angle::Result TextureGL::setImage(const gl::Context *context,
                                              unpackBuffer, pixels);
     }
 
-    if (workarounds.unpackLastRowSeparatelyForPaddingInclusion)
+    if (workarounds.unpackLastRowSeparatelyForPaddingInclusion.enabled)
     {
         bool apply = false;
         ANGLE_TRY(ShouldApplyLastRowPaddingWorkaround(
@@ -281,14 +281,14 @@ angle::Result TextureGL::setSubImage(const gl::Context *context,
            GetLevelInfo(format, texSubImageFormat.format).lumaWorkaround.enabled);
 
     stateManager->bindTexture(getType(), mTextureID);
-    if (workarounds.unpackOverlappingRowsSeparatelyUnpackBuffer && unpackBuffer &&
+    if (workarounds.unpackOverlappingRowsSeparatelyUnpackBuffer.enabled && unpackBuffer &&
         unpack.rowLength != 0 && unpack.rowLength < area.width)
     {
         return setSubImageRowByRowWorkaround(context, target, level, area, format, type, unpack,
                                              unpackBuffer, pixels);
     }
 
-    if (workarounds.unpackLastRowSeparatelyForPaddingInclusion)
+    if (workarounds.unpackLastRowSeparatelyForPaddingInclusion.enabled)
     {
         gl::Extents size(area.width, area.height, area.depth);
 
@@ -1306,7 +1306,7 @@ angle::Result TextureGL::setBaseLevel(const gl::Context *context, GLuint baseLev
         mLocalDirtyBits.set(gl::Texture::DIRTY_BIT_BASE_LEVEL);
 
         // Signal to the GL layer that the Impl has dirty bits.
-        onStateChange(context, angle::SubjectMessage::DEPENDENT_DIRTY_BITS);
+        onStateChange(context, angle::SubjectMessage::SubjectChanged);
 
         stateManager->bindTexture(getType(), mTextureID);
         functions->texParameteri(ToGLenum(getType()), GL_TEXTURE_BASE_LEVEL, baseLevel);
@@ -1325,7 +1325,7 @@ void TextureGL::setMinFilter(const gl::Context *context, GLenum filter)
         mLocalDirtyBits.set(gl::Texture::DIRTY_BIT_MIN_FILTER);
 
         // Signal to the GL layer that the Impl has dirty bits.
-        onStateChange(context, angle::SubjectMessage::DEPENDENT_DIRTY_BITS);
+        onStateChange(context, angle::SubjectMessage::SubjectChanged);
 
         stateManager->bindTexture(getType(), mTextureID);
         functions->texParameteri(ToGLenum(getType()), GL_TEXTURE_MIN_FILTER, filter);
@@ -1342,7 +1342,7 @@ void TextureGL::setMagFilter(const gl::Context *context, GLenum filter)
         mLocalDirtyBits.set(gl::Texture::DIRTY_BIT_MAG_FILTER);
 
         // Signal to the GL layer that the Impl has dirty bits.
-        onStateChange(context, angle::SubjectMessage::DEPENDENT_DIRTY_BITS);
+        onStateChange(context, angle::SubjectMessage::SubjectChanged);
 
         stateManager->bindTexture(getType(), mTextureID);
         functions->texParameteri(ToGLenum(getType()), GL_TEXTURE_MAG_FILTER, filter);
@@ -1366,7 +1366,7 @@ void TextureGL::setSwizzle(const gl::Context *context, GLint swizzle[4])
         mLocalDirtyBits.set(gl::Texture::DIRTY_BIT_SWIZZLE_ALPHA);
 
         // Signal to the GL layer that the Impl has dirty bits.
-        onStateChange(context, angle::SubjectMessage::DEPENDENT_DIRTY_BITS);
+        onStateChange(context, angle::SubjectMessage::SubjectChanged);
 
         stateManager->bindTexture(getType(), mTextureID);
         functions->texParameteriv(ToGLenum(getType()), GL_TEXTURE_SWIZZLE_RGBA, swizzle);
@@ -1508,7 +1508,7 @@ void TextureGL::setLevelInfo(const gl::Context *context,
     if (updateWorkarounds)
     {
         mLocalDirtyBits |= GetLevelWorkaroundDirtyBits();
-        onStateChange(context, angle::SubjectMessage::DEPENDENT_DIRTY_BITS);
+        onStateChange(context, angle::SubjectMessage::SubjectChanged);
     }
 }
 

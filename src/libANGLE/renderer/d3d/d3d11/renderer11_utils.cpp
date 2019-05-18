@@ -1467,7 +1467,7 @@ void GenerateCaps(ID3D11Device *device,
     caps->maxVertexAttributes = static_cast<GLuint>(GetMaximumVertexInputSlots(featureLevel));
     caps->maxVertexUniformVectors =
         static_cast<GLuint>(GetMaximumVertexUniformVectors(featureLevel));
-    if (workarounds.skipVSConstantRegisterZero)
+    if (workarounds.skipVSConstantRegisterZero.enabled)
     {
         caps->maxVertexUniformVectors -= 1;
     }
@@ -1619,8 +1619,9 @@ void GenerateCaps(ID3D11Device *device,
     extensions->standardDerivatives    = GetDerivativeInstructionSupport(featureLevel);
     extensions->shaderTextureLOD       = GetShaderTextureLODSupport(featureLevel);
     extensions->fragDepth              = true;
+    extensions->multiview              = IsMultiviewSupported(featureLevel);
     extensions->multiview2             = IsMultiviewSupported(featureLevel);
-    if (extensions->multiview2)
+    if (extensions->multiview || extensions->multiview2)
     {
         extensions->maxViews =
             std::min(static_cast<GLuint>(gl::IMPLEMENTATION_ANGLE_MULTIVIEW_MAX_VIEWS),
@@ -1643,14 +1644,18 @@ void GenerateCaps(ID3D11Device *device,
     extensions->copyTexture                      = true;
     extensions->copyCompressedTexture            = true;
     extensions->textureStorageMultisample2DArray = true;
-    extensions->multiviewMultisample =
-        (extensions->multiview2 && extensions->textureStorageMultisample2DArray);
-    extensions->copyTexture3d      = true;
-    extensions->textureBorderClamp = true;
-    extensions->textureMultisample = true;
-    extensions->provokingVertex    = true;
+    extensions->multiviewMultisample     = ((extensions->multiview || extensions->multiview2) &&
+                                        extensions->textureStorageMultisample2DArray);
+    extensions->copyTexture3d            = true;
+    extensions->textureBorderClamp       = true;
+    extensions->textureMultisample       = true;
+    extensions->provokingVertex          = true;
     extensions->blendFuncExtended        = true;
     extensions->maxDualSourceDrawBuffers = 1;
+
+    // D3D11 cannot support reading depth texture as a luminance texture.
+    // It treats it as a red-channel-only texture.
+    extensions->depthTextureOES = false;
 
     // D3D11 Feature Level 10_0+ uses SV_IsFrontFace in HLSL to emulate gl_FrontFacing.
     // D3D11 Feature Level 9_3 doesn't support SV_IsFrontFace, and has no equivalent, so can't
@@ -2363,16 +2368,16 @@ angle::Result LazyBlendState::resolve(d3d::Context *context, Renderer11 *rendere
     return resolveImpl(context, renderer, mDesc, nullptr, mDebugName);
 }
 
-angle::WorkaroundsD3D GenerateWorkarounds(const Renderer11DeviceCaps &deviceCaps,
-                                          const DXGI_ADAPTER_DESC &adapterDesc)
+void GenerateWorkarounds(const Renderer11DeviceCaps &deviceCaps,
+                         const DXGI_ADAPTER_DESC &adapterDesc,
+                         angle::WorkaroundsD3D *workarounds)
 {
     bool is9_3 = (deviceCaps.featureLevel <= D3D_FEATURE_LEVEL_9_3);
 
-    angle::WorkaroundsD3D workarounds;
-    workarounds.mrtPerfWorkaround                = true;
-    workarounds.setDataFasterThanImageUpload     = true;
-    workarounds.zeroMaxLodWorkaround             = is9_3;
-    workarounds.useInstancedPointSpriteEmulation = is9_3;
+    workarounds->mrtPerfWorkaround.enabled                = true;
+    workarounds->setDataFasterThanImageUpload.enabled     = true;
+    workarounds->zeroMaxLodWorkaround.enabled             = is9_3;
+    workarounds->useInstancedPointSpriteEmulation.enabled = is9_3;
 
     // TODO(jmadill): Narrow problematic driver range.
     if (IsNvidia(adapterDesc.VendorId))
@@ -2383,43 +2388,48 @@ angle::WorkaroundsD3D GenerateWorkarounds(const Renderer11DeviceCaps &deviceCaps
             WORD part2 = LOWORD(deviceCaps.driverVersion.value().LowPart);
 
             // Disable the workaround to fix a second driver bug on newer NVIDIA.
-            workarounds.depthStencilBlitExtraCopy = (part1 <= 13u && part2 < 6881);
+            workarounds->depthStencilBlitExtraCopy.enabled = (part1 <= 13u && part2 < 6881);
         }
         else
         {
-            workarounds.depthStencilBlitExtraCopy = true;
+            workarounds->depthStencilBlitExtraCopy.enabled = true;
         }
     }
 
     // TODO(jmadill): Disable workaround when we have a fixed compiler DLL.
-    workarounds.expandIntegerPowExpressions = true;
+    workarounds->expandIntegerPowExpressions.enabled = true;
 
-    workarounds.flushAfterEndingTransformFeedback = IsNvidia(adapterDesc.VendorId);
-    workarounds.getDimensionsIgnoresBaseLevel     = IsNvidia(adapterDesc.VendorId);
-    workarounds.skipVSConstantRegisterZero        = IsNvidia(adapterDesc.VendorId);
-    workarounds.forceAtomicValueResolution        = IsNvidia(adapterDesc.VendorId);
+    workarounds->flushAfterEndingTransformFeedback.enabled = IsNvidia(adapterDesc.VendorId);
+    workarounds->getDimensionsIgnoresBaseLevel.enabled     = IsNvidia(adapterDesc.VendorId);
+    workarounds->skipVSConstantRegisterZero.enabled        = IsNvidia(adapterDesc.VendorId);
+    workarounds->forceAtomicValueResolution.enabled        = IsNvidia(adapterDesc.VendorId);
 
     if (IsIntel(adapterDesc.VendorId))
     {
         IntelDriverVersion capsVersion = d3d11_gl::GetIntelDriverVersion(deviceCaps.driverVersion);
 
-        workarounds.preAddTexelFetchOffsets           = true;
-        workarounds.useSystemMemoryForConstantBuffers = true;
-        workarounds.disableB5G6R5Support              = capsVersion < IntelDriverVersion(4539);
-        workarounds.addDummyTextureNoRenderTarget     = capsVersion < IntelDriverVersion(4815);
+        workarounds->preAddTexelFetchOffsets.enabled           = true;
+        workarounds->useSystemMemoryForConstantBuffers.enabled = true;
+        workarounds->disableB5G6R5Support.enabled          = capsVersion < IntelDriverVersion(4539);
+        workarounds->addDummyTextureNoRenderTarget.enabled = capsVersion < IntelDriverVersion(4815);
         if (IsSkylake(adapterDesc.DeviceId))
         {
-            workarounds.callClearTwice    = capsVersion < IntelDriverVersion(4771);
-            workarounds.emulateIsnanFloat = capsVersion < IntelDriverVersion(4542);
+            workarounds->callClearTwice.enabled    = capsVersion < IntelDriverVersion(4771);
+            workarounds->emulateIsnanFloat.enabled = capsVersion < IntelDriverVersion(4542);
         }
         else if (IsBroadwell(adapterDesc.DeviceId) || IsHaswell(adapterDesc.DeviceId))
         {
-            workarounds.rewriteUnaryMinusOperator = capsVersion < IntelDriverVersion(4624);
+            workarounds->rewriteUnaryMinusOperator.enabled = capsVersion < IntelDriverVersion(4624);
         }
     }
 
+    if (IsAMD(adapterDesc.VendorId))
+    {
+        workarounds->disableB5G6R5Support.enabled = true;
+    }
+
     // TODO(jmadill): Disable when we have a fixed driver version.
-    workarounds.emulateTinyStencilTextures = IsAMD(adapterDesc.VendorId);
+    workarounds->emulateTinyStencilTextures.enabled = IsAMD(adapterDesc.VendorId);
 
     // The tiny stencil texture workaround involves using CopySubresource or UpdateSubresource on a
     // depth stencil texture.  This is not allowed until feature level 10.1 but since it is not
@@ -2427,19 +2437,17 @@ angle::WorkaroundsD3D GenerateWorkarounds(const Renderer11DeviceCaps &deviceCaps
     // (anglebug.com/1572).
     if (deviceCaps.featureLevel < D3D_FEATURE_LEVEL_10_1)
     {
-        workarounds.emulateTinyStencilTextures = false;
+        workarounds->emulateTinyStencilTextures.enabled = false;
     }
 
     // If the VPAndRTArrayIndexFromAnyShaderFeedingRasterizer feature is not available, we have to
     // select the viewport / RT array index in the geometry shader.
-    workarounds.selectViewInGeometryShader =
+    workarounds->selectViewInGeometryShader.enabled =
         (deviceCaps.supportsVpRtIndexWriteFromVertexShader == false);
 
     // Call platform hooks for testing overrides.
     auto *platform = ANGLEPlatformCurrent();
-    platform->overrideWorkaroundsD3D(platform, &workarounds);
-
-    return workarounds;
+    platform->overrideWorkaroundsD3D(platform, workarounds);
 }
 
 void InitConstantBufferDesc(D3D11_BUFFER_DESC *constantBufferDescription, size_t byteWidth)

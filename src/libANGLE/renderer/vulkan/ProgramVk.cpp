@@ -165,6 +165,12 @@ uint32_t GetUniformBlockArraySize(const std::vector<gl::InterfaceBlock> &uniform
 
     return arraySize;
 }
+
+class Std140BlockLayoutEncoderFactory : public gl::CustomBlockLayoutEncoderFactory
+{
+  public:
+    sh::BlockLayoutEncoder *makeEncoder() override { return new sh::Std140BlockEncoder(); }
+};
 }  // anonymous namespace
 
 // ProgramVk::ShaderInfo implementation.
@@ -215,9 +221,7 @@ ProgramVk::DefaultUniformBlock::DefaultUniformBlock()
 
 ProgramVk::DefaultUniformBlock::~DefaultUniformBlock() = default;
 
-ProgramVk::ProgramVk(const gl::ProgramState &state) : ProgramImpl(state), mUniformBlocksOffsets{}
-{
-}
+ProgramVk::ProgramVk(const gl::ProgramState &state) : ProgramImpl(state), mUniformBlocksOffsets{} {}
 
 ProgramVk::~ProgramVk() = default;
 
@@ -307,9 +311,9 @@ angle::Result ProgramVk::linkImpl(const gl::Context *glContext,
     // don't already exist in the cache.
     vk::DescriptorSetLayoutDesc uniformsSetDesc;
     uniformsSetDesc.update(kVertexUniformsBindingIndex, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-                           1);
+                           1, VK_SHADER_STAGE_VERTEX_BIT);
     uniformsSetDesc.update(kFragmentUniformsBindingIndex, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-                           1);
+                           1, VK_SHADER_STAGE_FRAGMENT_BIT);
 
     ANGLE_TRY(renderer->getDescriptorSetLayout(
         contextVk, uniformsSetDesc, &mDescriptorSetLayouts[kUniformsDescriptorSetIndex]));
@@ -321,7 +325,8 @@ angle::Result ProgramVk::linkImpl(const gl::Context *glContext,
     {
         const uint32_t arraySize = GetUniformBlockArraySize(uniformBlocks, bufferIndex);
 
-        uniformBlocksSetDesc.update(bufferIndex, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, arraySize);
+        uniformBlocksSetDesc.update(bufferIndex, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, arraySize,
+                                    VK_SHADER_STAGE_ALL_GRAPHICS);
 
         bufferIndex += arraySize;
     }
@@ -338,14 +343,16 @@ angle::Result ProgramVk::linkImpl(const gl::Context *glContext,
 
         // The front-end always binds array sampler units sequentially.
         const uint32_t count = static_cast<uint32_t>(samplerBinding.boundTextureUnits.size());
-        texturesSetDesc.update(textureIndex, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count);
+        texturesSetDesc.update(textureIndex, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count,
+                               VK_SHADER_STAGE_ALL_GRAPHICS);
     }
 
     ANGLE_TRY(renderer->getDescriptorSetLayout(contextVk, texturesSetDesc,
                                                &mDescriptorSetLayouts[kTextureDescriptorSetIndex]));
 
     vk::DescriptorSetLayoutDesc driverUniformsSetDesc;
-    driverUniformsSetDesc.update(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
+    driverUniformsSetDesc.update(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+                                 VK_SHADER_STAGE_ALL_GRAPHICS);
     ANGLE_TRY(renderer->getDescriptorSetLayout(
         contextVk, driverUniformsSetDesc,
         &mDescriptorSetLayouts[kDriverUniformsDescriptorSetIndex]));
@@ -366,7 +373,8 @@ angle::Result ProgramVk::linkImpl(const gl::Context *glContext,
 
 void ProgramVk::linkResources(const gl::ProgramLinkedResources &resources)
 {
-    gl::ProgramLinkedResourcesLinker linker(nullptr);
+    Std140BlockLayoutEncoderFactory std140EncoderFactory;
+    gl::ProgramLinkedResourcesLinker linker(&std140EncoderFactory);
 
     linker.linkResources(mState, resources);
 }
@@ -618,22 +626,22 @@ void ProgramVk::setUniform4iv(GLint location, GLsizei count, const GLint *v)
 
 void ProgramVk::setUniform1uiv(GLint location, GLsizei count, const GLuint *v)
 {
-    UNIMPLEMENTED();
+    setUniformImpl(location, count, v, GL_UNSIGNED_INT);
 }
 
 void ProgramVk::setUniform2uiv(GLint location, GLsizei count, const GLuint *v)
 {
-    UNIMPLEMENTED();
+    setUniformImpl(location, count, v, GL_UNSIGNED_INT_VEC2);
 }
 
 void ProgramVk::setUniform3uiv(GLint location, GLsizei count, const GLuint *v)
 {
-    UNIMPLEMENTED();
+    setUniformImpl(location, count, v, GL_UNSIGNED_INT_VEC3);
 }
 
 void ProgramVk::setUniform4uiv(GLint location, GLsizei count, const GLuint *v)
 {
-    UNIMPLEMENTED();
+    setUniformImpl(location, count, v, GL_UNSIGNED_INT_VEC4);
 }
 
 template <int cols, int rows>
@@ -656,7 +664,7 @@ void ProgramVk::setUniformMatrixfv(GLint location,
             continue;
         }
 
-        bool updated = SetFloatUniformMatrix<cols, rows>(
+        bool updated = SetFloatUniformMatrixGLSL<cols, rows>(
             locationInfo.arrayIndex, linkedUniform.getArraySizeProduct(), count, transpose, value,
             uniformBlock.uniformData.data() + layoutInfo.offset);
 
@@ -784,7 +792,7 @@ void ProgramVk::getUniformiv(const gl::Context *context, GLint location, GLint *
 
 void ProgramVk::getUniformuiv(const gl::Context *context, GLint location, GLuint *params) const
 {
-    UNIMPLEMENTED();
+    getUniformImpl(location, params, GL_UNSIGNED_INT);
 }
 
 angle::Result ProgramVk::updateUniforms(ContextVk *contextVk)
@@ -991,8 +999,10 @@ angle::Result ProgramVk::updateTexturesDescriptorSet(ContextVk *contextVk,
                 vk::CommandBuffer *srcLayoutChange;
                 ANGLE_TRY(image.recordCommands(contextVk, &srcLayoutChange));
 
-                image.changeLayout(VK_IMAGE_ASPECT_COLOR_BIT,
-                                   vk::ImageLayout::FragmentShaderReadOnly, srcLayoutChange);
+                VkImageAspectFlags aspectFlags = image.getAspectFlags();
+                ASSERT(aspectFlags != 0);
+                image.changeLayout(aspectFlags, vk::ImageLayout::FragmentShaderReadOnly,
+                                   srcLayoutChange);
             }
 
             image.addReadDependency(framebuffer);
@@ -1063,7 +1073,7 @@ angle::Result ProgramVk::updateDescriptorSets(ContextVk *contextVk,
         VkDescriptorSet descSet = mDescriptorSets[descriptorSetIndex];
         if (descSet == VK_NULL_HANDLE)
         {
-            if (!contextVk->getRenderer()->getFeatures().bindEmptyForUnusedDescriptorSets)
+            if (!contextVk->getRenderer()->getFeatures().bindEmptyForUnusedDescriptorSets.enabled)
             {
                 continue;
             }
@@ -1085,8 +1095,8 @@ angle::Result ProgramVk::updateDescriptorSets(ContextVk *contextVk,
             descSet = mEmptyDescriptorSets[descriptorSetIndex];
         }
 
-        constexpr uint32_t kShaderTypeMin = static_cast<uint32_t>(gl::kGLES2ShaderTypeMin);
-        constexpr uint32_t kShaderTypeMax = static_cast<uint32_t>(gl::kGLES2ShaderTypeMax);
+        constexpr uint32_t kShaderTypeMin   = static_cast<uint32_t>(gl::kGLES2ShaderTypeMin);
+        constexpr uint32_t kShaderTypeMax   = static_cast<uint32_t>(gl::kGLES2ShaderTypeMax);
         constexpr uint32_t kShaderTypeCount = kShaderTypeMax - kShaderTypeMin + 1;
 
         // Default uniforms are encompassed in a block per shader stage, and they are assigned

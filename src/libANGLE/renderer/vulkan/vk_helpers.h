@@ -582,6 +582,7 @@ class ImageHelper final : public CommandGraphResource
     // Create a 2D[Array] for staging purposes.  Used by:
     //
     // - TextureVk::copySubImageImplWithDraw
+    // - FramebufferVk::readPixelsImpl
     //
     angle::Result init2DStaging(Context *context,
                                 const MemoryProperties &memoryProperties,
@@ -642,6 +643,10 @@ class ImageHelper final : public CommandGraphResource
                      vk::CommandBuffer *commandBuffer);
 
     angle::Result generateMipmapsWithBlit(ContextVk *contextVk, GLuint maxLevel);
+
+    // Resolve this image into a destination image.  This image should be in the TransferSrc layout.
+    // The destination image is automatically transitioned into TransferDst.
+    void resolve(ImageHelper *dest, const VkImageResolve &region, vk::CommandBuffer *commandBuffer);
 
     // Data staging
     void removeStagedUpdates(RendererVk *renderer, const gl::ImageIndex &index);
@@ -754,6 +759,10 @@ class ImageHelper final : public CommandGraphResource
     void clearDepthStencil(VkImageAspectFlags imageAspectFlags,
                            VkImageAspectFlags clearAspectFlags,
                            const VkClearDepthStencilValue &depthStencil,
+                           uint32_t baseMipLevel,
+                           uint32_t levelCount,
+                           uint32_t baseArrayLayer,
+                           uint32_t layerCount,
                            vk::CommandBuffer *commandBuffer);
 
     struct SubresourceUpdate

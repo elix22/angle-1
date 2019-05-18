@@ -214,10 +214,17 @@ TParseContext::TParseContext(TSymbolTable &symt,
       mGeometryShaderInvocations(0),
       mGeometryShaderMaxVertices(-1),
       mMaxGeometryShaderInvocations(resources.MaxGeometryShaderInvocations),
-      mMaxGeometryShaderMaxVertices(resources.MaxGeometryOutputVertices)
+      mMaxGeometryShaderMaxVertices(resources.MaxGeometryOutputVertices),
+      mFunctionBodyNewScope(false)
 {}
 
 TParseContext::~TParseContext() {}
+
+bool TParseContext::anyMultiviewExtensionAvailable()
+{
+    return isExtensionEnabled(TExtension::OVR_multiview) ||
+           isExtensionEnabled(TExtension::OVR_multiview2);
+}
 
 bool TParseContext::parseVectorFields(const TSourceLoc &line,
                                       const ImmutableString &compString,
@@ -1345,8 +1352,7 @@ void TParseContext::declarationQualifierErrorCheck(const sh::TQualifier qualifie
 
     // If multiview extension is enabled, "in" qualifier is allowed in the vertex shader in previous
     // parsing steps. So it needs to be checked here.
-    if (isExtensionEnabled(TExtension::OVR_multiview2) && mShaderVersion < 300 &&
-        qualifier == EvqVertexIn)
+    if (anyMultiviewExtensionAvailable() && mShaderVersion < 300 && qualifier == EvqVertexIn)
     {
         error(location, "storage qualifier supported in GLSL ES 3.00 and above only", "in");
     }
@@ -3104,8 +3110,7 @@ void TParseContext::parseGlobalLayoutQualifier(const TTypeQualifierBuilder &type
             return;
         }
     }
-    else if (isExtensionEnabled(TExtension::OVR_multiview2) &&
-             typeQualifier.qualifier == EvqVertexIn)
+    else if (anyMultiviewExtensionAvailable() && typeQualifier.qualifier == EvqVertexIn)
     {
         // This error is only specified in WebGL, but tightens unspecified behavior in the native
         // specification.
@@ -3258,6 +3263,13 @@ TIntermFunctionDefinition *TParseContext::addFunctionDefinition(
     TIntermBlock *functionBody,
     const TSourceLoc &location)
 {
+    // Undo push at end of parseFunctionDefinitionHeader() below for ESSL1.00 case
+    if (mFunctionBodyNewScope)
+    {
+        mFunctionBodyNewScope = false;
+        symbolTable.pop();
+    }
+
     // Check that non-void functions have at least one return statement.
     if (mCurrentFunctionType->getBasicType() != EbtVoid && !mFunctionReturnsValue)
     {
@@ -3297,6 +3309,13 @@ void TParseContext::parseFunctionDefinitionHeader(const TSourceLoc &location,
 
     *prototypeOut = createPrototypeNodeFromFunction(*function, location, true);
     setLoopNestingLevel(0);
+
+    // ESSL 1.00 spec allows for variable in function body to redefine parameter
+    if (IsSpecWithFunctionBodyNewScope(mShaderSpec, mShaderVersion))
+    {
+        mFunctionBodyNewScope = true;
+        symbolTable.push();
+    }
 }
 
 TFunction *TParseContext::parseFunctionDeclarator(const TSourceLoc &location, TFunction *function)
@@ -4533,7 +4552,9 @@ TLayoutQualifier TParseContext::parseLayoutQualifier(const ImmutableString &qual
     }
     else if (qualifierType == "num_views" && mShaderType == GL_VERTEX_SHADER)
     {
-        if (checkCanUseExtension(qualifierTypeLine, TExtension::OVR_multiview2))
+        if (checkCanUseOneOfExtensions(
+                qualifierTypeLine, std::array<TExtension, 2u>{
+                                       {TExtension::OVR_multiview, TExtension::OVR_multiview2}}))
         {
             parseNumViews(intValue, intValueLine, intValueString, &qualifier.numViews);
         }
@@ -4595,7 +4616,7 @@ TStorageQualifierWrapper *TParseContext::parseInQualifier(const TSourceLoc &loc)
     {
         case GL_VERTEX_SHADER:
         {
-            if (mShaderVersion < 300 && !isExtensionEnabled(TExtension::OVR_multiview2))
+            if (mShaderVersion < 300 && !anyMultiviewExtensionAvailable())
             {
                 error(loc, "storage qualifier supported in GLSL ES 3.00 and above only", "in");
             }

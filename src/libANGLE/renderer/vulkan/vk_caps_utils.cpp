@@ -43,6 +43,8 @@ void RendererVk::ensureCapsInitialized() const
     mNativeExtensions.mapBuffer              = true;
     mNativeExtensions.mapBufferRange         = true;
     mNativeExtensions.textureStorage         = true;
+    mNativeExtensions.drawBuffers            = true;
+    mNativeExtensions.fragDepth              = true;
     mNativeExtensions.framebufferBlit        = true;
     mNativeExtensions.copyTexture            = true;
     mNativeExtensions.copyCompressedTexture  = true;
@@ -57,10 +59,10 @@ void RendererVk::ensureCapsInitialized() const
     mNativeExtensions.eglImageExternalEssl3 = false;
 
     mNativeExtensions.memoryObject   = true;
-    mNativeExtensions.memoryObjectFd = getFeatures().supportsExternalMemoryFd;
+    mNativeExtensions.memoryObjectFd = getFeatures().supportsExternalMemoryFd.enabled;
 
     mNativeExtensions.semaphore   = true;
-    mNativeExtensions.semaphoreFd = getFeatures().supportsExternalSemaphoreFd;
+    mNativeExtensions.semaphoreFd = getFeatures().supportsExternalSemaphoreFd.enabled;
 
     // TODO: Enable this always and emulate instanced draws if any divisor exceeds the maximum
     // supported.  http://anglebug.com/2672
@@ -97,8 +99,9 @@ void RendererVk::ensureCapsInitialized() const
     // Vulkan natively supports non power-of-two textures
     mNativeExtensions.textureNPOT = true;
 
-    // TODO(lucferron): Eventually remove everything above this line in this function as the caps
-    // get implemented.
+    // Vulkan natively supports standard derivatives
+    mNativeExtensions.standardDerivatives = true;
+
     // https://vulkan.lunarg.com/doc/view/1.0.30.0/linux/vkspec.chunked/ch31s02.html
     mNativeCaps.maxElementIndex       = std::numeric_limits<GLuint>::max() - 1;
     mNativeCaps.max3DTextureSize      = mPhysicalDeviceProperties.limits.maxImageDimension3D;
@@ -320,12 +323,30 @@ egl::ConfigSet GenerateConfigs(const GLenum *colorFormats,
                                size_t colorFormatsCount,
                                const GLenum *depthStencilFormats,
                                size_t depthStencilFormatCount,
-                               const EGLint *sampleCounts,
-                               size_t sampleCountsCount,
                                DisplayVk *display)
 {
     ASSERT(colorFormatsCount > 0);
     ASSERT(display != nullptr);
+
+    gl::SupportedSampleSet colorSampleCounts;
+    gl::SupportedSampleSet depthStencilSampleCounts;
+    gl::SupportedSampleSet sampleCounts;
+
+    const VkPhysicalDeviceLimits &limits =
+        display->getRenderer()->getPhysicalDeviceProperties().limits;
+    const uint32_t depthStencilSampleCountsLimit =
+        limits.framebufferDepthSampleCounts & limits.framebufferStencilSampleCounts;
+
+    vk_gl::AddSampleCounts(limits.framebufferColorSampleCounts, &colorSampleCounts);
+    vk_gl::AddSampleCounts(depthStencilSampleCountsLimit, &depthStencilSampleCounts);
+
+    // Always support 0 samples
+    colorSampleCounts.insert(0);
+    depthStencilSampleCounts.insert(0);
+
+    std::set_intersection(colorSampleCounts.begin(), colorSampleCounts.end(),
+                          depthStencilSampleCounts.begin(), depthStencilSampleCounts.end(),
+                          std::inserter(sampleCounts, sampleCounts.begin()));
 
     egl::ConfigSet configSet;
 
@@ -343,12 +364,22 @@ egl::ConfigSet GenerateConfigs(const GLenum *colorFormats,
             ASSERT(depthStencilFormats[depthStencilFormatIdx] == GL_NONE ||
                    depthStencilFormatInfo.sized);
 
-            for (size_t sampleCountIndex = 0; sampleCountIndex < sampleCountsCount;
-                 sampleCountIndex++)
+            const gl::SupportedSampleSet *configSampleCounts = &sampleCounts;
+            // If there is no depth/stencil buffer, use the color samples set.
+            if (depthStencilFormats[depthStencilFormatIdx] == GL_NONE)
             {
-                egl::Config config =
-                    GenerateDefaultConfig(display->getRenderer(), colorFormatInfo,
-                                          depthStencilFormatInfo, sampleCounts[sampleCountIndex]);
+                configSampleCounts = &colorSampleCounts;
+            }
+            // If there is no color buffer, use the depth/stencil samples set.
+            else if (colorFormats[colorFormatIdx] == GL_NONE)
+            {
+                configSampleCounts = &depthStencilSampleCounts;
+            }
+
+            for (EGLint sampleCount : *configSampleCounts)
+            {
+                egl::Config config = GenerateDefaultConfig(display->getRenderer(), colorFormatInfo,
+                                                           depthStencilFormatInfo, sampleCount);
                 if (display->checkConfigSupport(&config))
                 {
                     configSet.add(config);
