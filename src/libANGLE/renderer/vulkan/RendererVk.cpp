@@ -1250,7 +1250,8 @@ void RendererVk::initFeatures(const ExtensionNameList &deviceExtensionNames)
     {
         // TODO(lucferron): Currently disabled on Intel only since many tests are failing and need
         // investigation. http://anglebug.com/2728
-        mFeatures.flipViewportY.enabled = !IsIntel(mPhysicalDeviceProperties.vendorID);
+        // ELIX22 - on APPLE/IOS devices it's the same issue  , so I disabled  it on APPLE also
+        mFeatures.flipViewportY.enabled = !(IsIntel(mPhysicalDeviceProperties.vendorID) || IsApple(mPhysicalDeviceProperties.vendorID));
     }
 
 #ifdef ANGLE_PLATFORM_WINDOWS
