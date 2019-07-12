@@ -32,31 +32,32 @@
 // For now we only log Vulkan test expectations. More back-ends can follow as we need them.
 
 // Crashes trying to load non-existent texture load function.
-3455 VULKAN : KHR-GLES3.texture_filter_anisotropic.drawing = SKIP
 3455 VULKAN : KHR-GLES3.copy_tex_image_conversions.forbidden.* = SKIP
 3455 VULKAN : KHR-GLES3.copy_tex_image_conversions.required.renderbuffer_* = SKIP
 3455 VULKAN : KHR-GLES3.packed_pixels.rectangle.r* = SKIP
 3455 VULKAN : KHR-GLES3.packed_pixels.pbo_rectangle.r* = SKIP
 3455 VULKAN : KHR-GLES3.packed_pixels.pbo_rectangle.srgb8_alpha8 = SKIP
 
-// Failures related to RGB5A1 texture formats.
-3456 VULKAN : KHR-GLES3.core.internalformat.texture2d.rgba_unsigned_byte_rgb5_a1 = SKIP
-3456 VULKAN : KHR-GLES3.core.internalformat.copy_tex_image.rgb5_a1 = SKIP
-
-// Depth/stencil related failures
+// Depth/stencil related failures.
 3457 VULKAN : KHR-GLES3.core.internalformat.texture2d.depth_stencil_unsigned_int_24_8_depth24_stencil8 = FAIL
 3457 VULKAN : KHR-GLES3.packed_pixels.rectangle.depth* = SKIP
 3457 VULKAN : KHR-GLES3.packed_pixels.pbo_rectangle.depth* = SKIP
 3457 VULKAN : KHR-GLES3.packed_depth_stencil.* = SKIP
 
-// CopyTexImage conversion bugs.
-3458 VULKAN : KHR-GLES3.copy_tex_image_conversions.required.* = FAIL
+// CopyTexImage conversion missing 2D Array and 3D texture support.
+3458 VULKAN : KHR-GLES3.copy_tex_image_conversions.required.* = SKIP
+
+// column/row_major specified on struct member:
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.all_per_block_buffers.16 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.all_per_block_buffers.3 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.all_per_block_buffers.5 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.all_per_block_buffers.7 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.all_shared_buffer.0 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.basic_instance_arrays.0 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.basic_instance_arrays.4 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.basic_instance_arrays.5 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.nested_structs_arrays.7 = FAIL
+3443 VULKAN : KHR-GLES3.shaders.uniform_block.random.nested_structs_arrays_instance_arrays.3 = FAIL
 
 // Require 3D textures.
 3188 VULKAN : KHR-GLES3.packed_pixels.varied_rectangle.* = SKIP
-
-// Shader related failure. Not Vulkan-specific.
-3459 : KHR-GLES3.shaders.uniform_block.common.name_matching = FAIL
-
-// Issues with repeat filtering mode.
-3460 VULKAN : KHR-GLES3.texture_repeat_mode.* = FAIL

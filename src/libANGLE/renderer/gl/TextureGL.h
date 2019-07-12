@@ -19,7 +19,6 @@ namespace rx
 class BlitGL;
 class FunctionsGL;
 class StateManagerGL;
-struct WorkaroundsGL;
 
 struct LUMAWorkaroundGL
 {
@@ -41,6 +40,8 @@ struct LevelInfoGL
     GLenum nativeInternalFormat;
 
     // If this mip level requires sampler-state re-writing so that only a red channel is exposed.
+    // In GLES 2.0, depth textures are treated as luminance, so we check the
+    // context's major version when applying the depth swizzle.
     bool depthStencilWorkaround;
 
     // Information about luminance alpha texture workarounds in the core profile.
@@ -156,6 +157,13 @@ class TextureGL : public TextureImpl
                                            GLuint64 offset) override;
 
     angle::Result setImageExternal(const gl::Context *context,
+                                   const gl::ImageIndex &index,
+                                   GLenum internalFormat,
+                                   const gl::Extents &size,
+                                   GLenum format,
+                                   GLenum type) override;
+
+    angle::Result setImageExternal(const gl::Context *context,
                                    gl::TextureType type,
                                    egl::Stream *stream,
                                    const egl::Stream::GLTextureDescription &desc) override;
@@ -168,6 +176,8 @@ class TextureGL : public TextureImpl
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
                                     egl::Image *image) override;
+
+    GLint getNativeID() const override;
 
     GLuint getTextureID() const { return mTextureID; }
 
@@ -226,7 +236,8 @@ class TextureGL : public TextureImpl
                                                const gl::Buffer *unpackBuffer,
                                                const uint8_t *pixels);
 
-    void syncTextureStateSwizzle(const FunctionsGL *functions,
+    void syncTextureStateSwizzle(const gl::Context *context,
+                                 const FunctionsGL *functions,
                                  GLenum name,
                                  GLenum value,
                                  GLenum *outValue);

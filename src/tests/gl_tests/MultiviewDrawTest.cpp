@@ -7,7 +7,7 @@
 // Test issuing multiview Draw* commands.
 //
 
-#include "platform/WorkaroundsD3D.h"
+#include "platform/FeaturesD3D.h"
 #include "test_utils/MultiviewTest.h"
 #include "test_utils/gl_raii.h"
 
@@ -285,10 +285,10 @@ class MultiviewRenderTest : public MultiviewFramebufferTestBase
   protected:
     MultiviewRenderTest() : MultiviewFramebufferTestBase(GetParam(), GetParam().mSamples) {}
 
-    void overrideWorkaroundsD3D(WorkaroundsD3D *workarounds) override
+    void overrideWorkaroundsD3D(FeaturesD3D *features) override
     {
-        workarounds->forceFeatureEnabled("select_view_in_geometry_shader",
-                                         GetParam().mForceUseGeometryShaderOnD3D);
+        features->overrideFeatures({"select_view_in_geometry_shader"},
+                                   GetParam().mForceUseGeometryShaderOnD3D);
     }
 
     virtual void testSetUp() {}
@@ -527,10 +527,10 @@ class MultiviewLayeredRenderTest : public MultiviewFramebufferTestBase
     MultiviewLayeredRenderTest() : MultiviewFramebufferTestBase(GetParam(), 0) {}
     void SetUp() final { MultiviewFramebufferTestBase::FramebufferTestSetUp(); }
     void TearDown() final { MultiviewFramebufferTestBase::FramebufferTestTearDown(); }
-    void overrideWorkaroundsD3D(WorkaroundsD3D *workarounds) final
+    void overrideWorkaroundsD3D(FeaturesD3D *features) final
     {
-        workarounds->forceFeatureEnabled("select_view_in_geometry_shader",
-                                         GetParam().mForceUseGeometryShaderOnD3D);
+        features->overrideFeatures({"select_view_in_geometry_shader"},
+                                   GetParam().mForceUseGeometryShaderOnD3D);
     }
 };
 
@@ -1720,6 +1720,9 @@ TEST_P(MultiviewRenderPrimitiveTest, LineLoop)
     {
         return;
     }
+    // Only this subtest fails on intel-hd-630-ubuntu-stable. Driver bug?
+    // https://bugs.chromium.org/p/angleproject/issues/detail?id=3472
+    ANGLE_SKIP_TEST_IF(IsIntel() && IsLinux() && IsOpenGL());
 
     GLuint program = CreateSimplePassthroughProgram(2, GetParam().mMultiviewExtension);
     ASSERT_NE(program, 0u);

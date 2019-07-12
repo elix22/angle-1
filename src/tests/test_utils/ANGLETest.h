@@ -67,6 +67,11 @@ struct SystemInfo;
 #define EXPECT_EGLENUM_EQ(expected, actual) \
     EXPECT_EQ(static_cast<EGLenum>(expected), static_cast<EGLenum>(actual))
 
+#define ASSERT_GL_FRAMEBUFFER_COMPLETE(framebuffer) \
+    ASSERT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(framebuffer))
+#define EXPECT_GL_FRAMEBUFFER_COMPLETE(framebuffer) \
+    EXPECT_GLENUM_EQ(GL_FRAMEBUFFER_COMPLETE, glCheckFramebufferStatus(framebuffer))
+
 namespace angle
 {
 struct GLColorRGB
@@ -74,6 +79,9 @@ struct GLColorRGB
     GLColorRGB();
     GLColorRGB(GLubyte r, GLubyte g, GLubyte b);
     GLColorRGB(const angle::Vector3 &floatColor);
+
+    const GLubyte *data() const { return &R; }
+    GLubyte *data() { return &R; }
 
     GLubyte R, G, B;
 
@@ -279,8 +287,8 @@ class ANGLETestBase
   public:
     void setWindowVisible(bool isVisible);
 
-    virtual void overrideWorkaroundsD3D(angle::WorkaroundsD3D *workaroundsD3D) {}
-    virtual void overrideFeaturesVk(angle::FeaturesVk *workaroundsVulkan) {}
+    virtual void overrideWorkaroundsD3D(angle::FeaturesD3D *featuresD3D) {}
+    virtual void overrideFeaturesVk(angle::FeaturesVk *featuresVulkan) {}
 
   protected:
     void ANGLETestSetUp();
@@ -405,9 +413,19 @@ class ANGLETestBase
         return mCurrentParams->getRenderer() == EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE;
     }
 
+    bool isGLESRenderer() const
+    {
+        return mCurrentParams->getRenderer() == EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE;
+    }
+
     bool isD3D11Renderer() const
     {
         return mCurrentParams->getRenderer() == EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE;
+    }
+
+    bool isVulkanRenderer() const
+    {
+        return mCurrentParams->getRenderer() == EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE;
     }
 
   private:
@@ -527,10 +545,7 @@ class ANGLETestEnvironment : public testing::Environment
 };
 
 // Driver vendors
-bool IsIntel();
 bool IsAdreno();
-bool IsAMD();
-bool IsNVIDIA();
 
 // Renderer back-ends
 // Note: FL9_3 is explicitly *not* considered D3D11.

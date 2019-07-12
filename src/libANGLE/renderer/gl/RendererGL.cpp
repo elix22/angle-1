@@ -13,6 +13,7 @@
 #include "common/debug.h"
 #include "libANGLE/AttributeMap.h"
 #include "libANGLE/Context.h"
+#include "libANGLE/Display.h"
 #include "libANGLE/Path.h"
 #include "libANGLE/State.h"
 #include "libANGLE/Surface.h"
@@ -21,6 +22,7 @@
 #include "libANGLE/renderer/gl/ClearMultiviewGL.h"
 #include "libANGLE/renderer/gl/CompilerGL.h"
 #include "libANGLE/renderer/gl/ContextGL.h"
+#include "libANGLE/renderer/gl/DisplayGL.h"
 #include "libANGLE/renderer/gl/FenceNVGL.h"
 #include "libANGLE/renderer/gl/FramebufferGL.h"
 #include "libANGLE/renderer/gl/FunctionsGL.h"
@@ -180,7 +182,9 @@ static void INTERNAL_GL_APIENTRY LogGLDebugMessage(GLenum source,
 namespace rx
 {
 
-RendererGL::RendererGL(std::unique_ptr<FunctionsGL> functions, const egl::AttributeMap &attribMap)
+RendererGL::RendererGL(std::unique_ptr<FunctionsGL> functions,
+                       const egl::AttributeMap &attribMap,
+                       DisplayGL *display)
     : mMaxSupportedESVersion(0, 0),
       mFunctions(std::move(functions)),
       mStateManager(nullptr),
@@ -192,9 +196,10 @@ RendererGL::RendererGL(std::unique_ptr<FunctionsGL> functions, const egl::Attrib
       mNativeParallelCompileEnabled(false)
 {
     ASSERT(mFunctions);
-    nativegl_gl::GenerateWorkarounds(mFunctions.get(), &mWorkarounds);
+    nativegl_gl::InitializeFeatures(mFunctions.get(), &mFeatures);
+    OverrideFeaturesWithDisplayState(&mFeatures, display->getState());
     mStateManager = new StateManagerGL(mFunctions.get(), getNativeCaps(), getNativeExtensions());
-    mBlitter      = new BlitGL(mFunctions.get(), mWorkarounds, mStateManager);
+    mBlitter          = new BlitGL(mFunctions.get(), mFeatures, mStateManager);
     mMultiviewClearer = new ClearMultiviewGL(mFunctions.get(), mStateManager);
 
     bool hasDebugOutput = mFunctions->isAtLeastGL(gl::Version(4, 3)) ||
@@ -219,7 +224,7 @@ RendererGL::RendererGL(std::unique_ptr<FunctionsGL> functions, const egl::Attrib
         mFunctions->debugMessageCallback(&LogGLDebugMessage, nullptr);
     }
 
-    if (mWorkarounds.initializeCurrentVertexAttributes.enabled)
+    if (mFeatures.initializeCurrentVertexAttributes.enabled)
     {
         GLint maxVertexAttribs = 0;
         mFunctions->getIntegerv(GL_MAX_VERTEX_ATTRIBS, &maxVertexAttribs);
@@ -257,14 +262,14 @@ angle::Result RendererGL::flush()
 
 angle::Result RendererGL::finish()
 {
-    if (mWorkarounds.finishDoesNotCauseQueriesToBeAvailable.enabled && mUseDebugOutput)
+    if (mFeatures.finishDoesNotCauseQueriesToBeAvailable.enabled && mUseDebugOutput)
     {
         mFunctions->enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     }
 
     mFunctions->finish();
 
-    if (mWorkarounds.finishDoesNotCauseQueriesToBeAvailable.enabled && mUseDebugOutput)
+    if (mFeatures.finishDoesNotCauseQueriesToBeAvailable.enabled && mUseDebugOutput)
     {
         mFunctions->disable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     }
@@ -495,9 +500,8 @@ void RendererGL::generateCaps(gl::Caps *outCaps,
                               gl::Extensions *outExtensions,
                               gl::Limitations * /* outLimitations */) const
 {
-    nativegl_gl::GenerateCaps(mFunctions.get(), mWorkarounds, outCaps, outTextureCaps,
-                              outExtensions, &mMaxSupportedESVersion,
-                              &mMultiviewImplementationType);
+    nativegl_gl::GenerateCaps(mFunctions.get(), mFeatures, outCaps, outTextureCaps, outExtensions,
+                              &mMaxSupportedESVersion, &mMultiviewImplementationType);
 }
 
 GLint RendererGL::getGPUDisjoint()
@@ -552,10 +556,10 @@ MultiviewImplementationTypeGL RendererGL::getMultiviewImplementationType() const
     return mMultiviewImplementationType;
 }
 
-void RendererGL::applyNativeWorkarounds(gl::Workarounds *workarounds) const
+void RendererGL::initializeFrontendFeatures(angle::FrontendFeatures *features) const
 {
     ensureCapsInitialized();
-    nativegl_gl::ApplyWorkarounds(mFunctions.get(), workarounds);
+    nativegl_gl::InitializeFrontendFeatures(mFunctions.get(), features);
 }
 
 angle::Result RendererGL::dispatchCompute(const gl::Context *context,
@@ -586,7 +590,7 @@ angle::Result RendererGL::memoryBarrierByRegion(GLbitfield barriers)
 
 bool RendererGL::bindWorkerContext(std::string *infoLog)
 {
-    if (mWorkarounds.disableWorkerContexts.enabled)
+    if (mFeatures.disableWorkerContexts.enabled)
     {
         return false;
     }

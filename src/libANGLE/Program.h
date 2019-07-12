@@ -75,6 +75,7 @@ enum class LinkMismatchError
     BINDING_MISMATCH,
     LOCATION_MISMATCH,
     OFFSET_MISMATCH,
+    INSTANCE_NAME_MISMATCH,
 
     // Interface block specific
     LAYOUT_QUALIFIER_MISMATCH,
@@ -253,6 +254,7 @@ struct TransformFeedbackVarying : public sh::Varying
         interpolation               = parent.interpolation;
         isInvariant                 = parent.isInvariant;
         name                        = parent.name + "." + name;
+        mappedName                  = parent.mappedName + "." + mappedName;
     }
 
     std::string nameWithArrayIndex() const
@@ -347,18 +349,29 @@ class ProgramState final : angle::NonCopyable
     {
         return mLinkedTransformFeedbackVaryings;
     }
+    const std::vector<GLsizei> &getTransformFeedbackStrides() const
+    {
+        return mTransformFeedbackStrides;
+    }
+    size_t getTransformFeedbackBufferCount() const { return mTransformFeedbackStrides.size(); }
     const std::vector<AtomicCounterBuffer> &getAtomicCounterBuffers() const
     {
         return mAtomicCounterBuffers;
     }
+
+    // Count the number of uniform and storage buffer declarations, counting arrays as one.
+    size_t getUniqueUniformBlockCount() const;
+    size_t getUniqueStorageBlockCount() const;
 
     GLuint getUniformIndexFromName(const std::string &name) const;
     GLuint getUniformIndexFromLocation(GLint location) const;
     Optional<GLuint> getSamplerIndex(GLint location) const;
     bool isSamplerUniformIndex(GLuint index) const;
     GLuint getSamplerIndexFromUniformIndex(GLuint uniformIndex) const;
+    GLuint getUniformIndexFromSamplerIndex(GLuint samplerIndex) const;
     bool isImageUniformIndex(GLuint index) const;
     GLuint getImageIndexFromUniformIndex(GLuint uniformIndex) const;
+    GLuint getUniformIndexFromImageIndex(GLuint imageIndex) const;
     GLuint getAttributeLocation(const std::string &name) const;
 
     GLuint getBufferVariableIndexFromName(const std::string &name) const;
@@ -367,6 +380,11 @@ class ProgramState final : angle::NonCopyable
     bool usesMultiview() const { return mNumViews != -1; }
 
     const ShaderBitSet &getLinkedShaderStages() const { return mLinkedShaderStages; }
+    bool hasLinkedShaderStage(ShaderType shaderType) const
+    {
+        return mLinkedShaderStages.test(shaderType);
+    }
+    size_t getLinkedShaderStageCount() const { return mLinkedShaderStages.count(); }
 
     bool hasAttachedShader() const;
 
@@ -897,7 +915,6 @@ class Program final : angle::NonCopyable, public LabeledObject
     // Writes a program's binary to the output memory buffer.
     void serialize(const Context *context, angle::MemoryBuffer *binaryOut) const;
 
-
   private:
     struct LinkingState;
 
@@ -910,7 +927,7 @@ class Program final : angle::NonCopyable, public LabeledObject
     void deleteSelf(const Context *context);
 
     bool linkValidateShaders(InfoLog &infoLog);
-    bool linkAttributes(const Caps &caps, InfoLog &infoLog, bool webglCompatibility);
+    bool linkAttributes(const Context *context, InfoLog &infoLog);
     bool linkInterfaceBlocks(const Caps &caps,
                              const Version &version,
                              bool webglCompatibility,

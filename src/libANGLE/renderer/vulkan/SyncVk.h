@@ -30,7 +30,7 @@ class FenceSyncVk
     FenceSyncVk();
     ~FenceSyncVk();
 
-    void onDestroy(RendererVk *renderer);
+    void onDestroy(ContextVk *contextVk);
     void onDestroy(DisplayVk *display);
 
     angle::Result initialize(ContextVk *contextVk);
@@ -93,6 +93,8 @@ class EGLSyncVk final : public EGLSyncImpl
                           const gl::Context *context,
                           EGLint flags) override;
     egl::Error getStatus(const egl::Display *display, EGLint *outStatus) override;
+
+    egl::Error dupNativeFenceFD(const egl::Display *display, EGLint *result) const override;
 
   private:
     FenceSyncVk mFenceSync;

@@ -370,11 +370,13 @@ class GraphicsPipelineDesc final
                            uint32_t attribIndex,
                            GLuint stride,
                            GLuint divisor,
-                           VkFormat format,
+                           angle::FormatID format,
                            GLuint relativeOffset);
 
     // Input assembly info
     void updateTopology(GraphicsPipelineTransitionBits *transition, gl::PrimitiveMode drawMode);
+    void updatePrimitiveRestartEnabled(GraphicsPipelineTransitionBits *transition,
+                                       bool primitiveRestartEnabled);
 
     // Raster states
     void updateCullMode(GraphicsPipelineTransitionBits *transition,
@@ -383,8 +385,11 @@ class GraphicsPipelineDesc final
                          const gl::RasterizerState &rasterState,
                          bool invertFrontFace);
     void updateLineWidth(GraphicsPipelineTransitionBits *transition, float lineWidth);
+    void updateRasterizerDiscardEnabled(GraphicsPipelineTransitionBits *transition,
+                                        bool rasterizerDiscardEnabled);
 
     // Multisample states
+    void setRasterizationSamples(uint32_t rasterizationSamples);
     void updateRasterizationSamples(GraphicsPipelineTransitionBits *transition,
                                     uint32_t rasterizationSamples);
     void updateAlphaToCoverageEnable(GraphicsPipelineTransitionBits *transition, bool enable);
@@ -527,10 +532,9 @@ class DescriptorSetLayoutDesc final
         mPackedDescriptorSetLayout;
 };
 
-// The following are for caching descriptor set layouts. Limited to max four descriptor set layouts
-// and one push constant per shader stage. This can be extended in the future.
+// The following are for caching descriptor set layouts. Limited to max four descriptor set layouts.
+// This can be extended in the future.
 constexpr size_t kMaxDescriptorSetLayouts = 4;
-constexpr size_t kMaxPushConstantRanges   = angle::EnumSize<gl::ShaderType>();
 
 struct PackedPushConstantRange
 {
@@ -543,7 +547,7 @@ using DescriptorSetLayoutArray = std::array<T, kMaxDescriptorSetLayouts>;
 using DescriptorSetLayoutPointerArray =
     DescriptorSetLayoutArray<BindingPointer<DescriptorSetLayout>>;
 template <typename T>
-using PushConstantRangeArray = std::array<T, kMaxPushConstantRanges>;
+using PushConstantRangeArray = gl::ShaderMap<T>;
 
 class PipelineLayoutDesc final
 {
@@ -570,14 +574,14 @@ class PipelineLayoutDesc final
                       (sizeof(DescriptorSetLayoutDesc) * kMaxDescriptorSetLayouts),
                   "Unexpected size");
     static_assert(sizeof(decltype(mPushConstantRanges)) ==
-                      (sizeof(PackedPushConstantRange) * kMaxPushConstantRanges),
+                      (sizeof(PackedPushConstantRange) * angle::EnumSize<gl::ShaderType>()),
                   "Unexpected size");
 };
 
 // Verify the structure is properly packed.
 static_assert(sizeof(PipelineLayoutDesc) ==
                   (sizeof(DescriptorSetLayoutArray<DescriptorSetLayoutDesc>) +
-                   sizeof(std::array<PackedPushConstantRange, kMaxPushConstantRanges>)),
+                   sizeof(gl::ShaderMap<PackedPushConstantRange>)),
               "Unexpected Size");
 
 // Disable warnings about struct padding.
@@ -681,6 +685,28 @@ class PipelineHelper final : angle::NonCopyable
 
 ANGLE_INLINE PipelineHelper::PipelineHelper(Pipeline &&pipeline) : mPipeline(std::move(pipeline)) {}
 
+class TextureDescriptorDesc
+{
+  public:
+    TextureDescriptorDesc();
+    ~TextureDescriptorDesc();
+
+    TextureDescriptorDesc(const TextureDescriptorDesc &other);
+    TextureDescriptorDesc &operator=(const TextureDescriptorDesc &other);
+
+    void update(size_t index, Serial serial);
+    size_t hash() const;
+    void reset();
+
+    bool operator==(const TextureDescriptorDesc &other) const;
+
+    // Note: this is an exclusive index. If there is one index it will return "1".
+    uint32_t getMaxIndex() const { return mMaxIndex; }
+
+  private:
+    uint32_t mMaxIndex;
+    gl::ActiveTextureArray<uint32_t> mSerials;
+};
 }  // namespace vk
 }  // namespace rx
 
@@ -715,6 +741,12 @@ template <>
 struct hash<rx::vk::PipelineLayoutDesc>
 {
     size_t operator()(const rx::vk::PipelineLayoutDesc &key) const { return key.hash(); }
+};
+
+template <>
+struct hash<rx::vk::TextureDescriptorDesc>
+{
+    size_t operator()(const rx::vk::TextureDescriptorDesc &key) const { return key.hash(); }
 };
 }  // namespace std
 
@@ -777,7 +809,7 @@ class GraphicsPipelineCache final : angle::NonCopyable
     ~GraphicsPipelineCache();
 
     void destroy(VkDevice device);
-    void release(RendererVk *renderer);
+    void release(ContextVk *context);
 
     void populate(const vk::GraphicsPipelineDesc &desc, vk::Pipeline &&pipeline);
 
@@ -858,30 +890,32 @@ class PipelineLayoutCache final : angle::NonCopyable
 //
 // The set/binding assignment is done as following:
 //
-// - Set 0 contains the ANGLE driver uniforms at binding 0.  Note that driver uniforms are updated
+// - Set 0 contains uniform blocks created to encompass default uniforms.  Bindings 0 and 1
+//   correspond to default uniforms in the vertex and fragment shaders respectively.  Additionally,
+//   transform feedback buffers are bound from binding 2 and up.
+// - Set 1 contains all textures.
+// - Set 2 contains all uniform and storage blocks.
+// - Set 3 contains the ANGLE driver uniforms at binding 0.  Note that driver uniforms are updated
 //   only under rare circumstances, such as viewport or depth range change.  However, there is only
 //   one binding in this set.
-// - Set 1 contains uniform blocks created to encompass default uniforms.  Bindings 0 and 1
-//   correspond to default uniforms in the vertex and fragment shaders respectively.
-// - Set 2 contains all textures.
-// - Set 3 contains all uniform blocks.
 
-// ANGLE driver uniforms set index (binding is always 0):
-constexpr uint32_t kDriverUniformsDescriptorSetIndex = 0;
 // Uniforms set index:
-constexpr uint32_t kUniformsDescriptorSetIndex = 1;
+constexpr uint32_t kUniformsAndXfbDescriptorSetIndex = 0;
 // Textures set index:
-constexpr uint32_t kTextureDescriptorSetIndex = 2;
+constexpr uint32_t kTextureDescriptorSetIndex = 1;
 // Uniform blocks set index:
-constexpr uint32_t kUniformBlockDescriptorSetIndex = 3;
+constexpr uint32_t kBufferDescriptorSetIndex = 2;
+// ANGLE driver uniforms set index (binding is always 3):
+constexpr uint32_t kDriverUniformsDescriptorSetIndex = 3;
 
 // Only 1 driver uniform binding is used.
 constexpr uint32_t kReservedDriverUniformBindingCount = 1;
-// Binding index for default uniforms in the vertex shader:
-constexpr uint32_t kVertexUniformsBindingIndex = 0;
-// Binding index for default uniforms in the fragment shader:
-constexpr uint32_t kFragmentUniformsBindingIndex = 1;
-
+// There is 1 default uniform binding used per stage.  Currently, a maxium of two stages are
+// supported.
+constexpr uint32_t kReservedPerStageDefaultUniformBindingCount = 1;
+constexpr uint32_t kReservedDefaultUniformBindingCount         = 2;
+// Binding index start for transform feedback buffers:
+constexpr uint32_t kXfbBindingIndexStart = kReservedDefaultUniformBindingCount;
 }  // namespace rx
 
 #endif  // LIBANGLE_RENDERER_VULKAN_VK_CACHE_UTILS_H_

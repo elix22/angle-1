@@ -45,6 +45,9 @@ struct Rectangle
     bool isReversedX() const { return width < 0; }
     bool isReversedY() const { return height < 0; }
 
+    // Returns a rectangle with the same area but flipped in X, Y, neither or both.
+    Rectangle flip(bool flipX, bool flipY) const;
+
     // Returns a rectangle with the same area but with height and width guaranteed to be positive.
     Rectangle removeReversal() const;
 
@@ -441,6 +444,11 @@ constexpr size_t kCubeFaceCount = 6;
 
 using TextureMap = angle::PackedEnumMap<TextureType, BindingPointer<Texture>>;
 
+// ShaderVector can contain one item per shader.  It differs from ShaderMap in that the values are
+// not indexed by ShaderType.
+template <typename T>
+using ShaderVector = angle::FixedVector<T, static_cast<size_t>(ShaderType::EnumCount)>;
+
 template <typename T>
 using AttachmentArray = std::array<T, IMPLEMENTATION_MAX_FRAMEBUFFER_ATTACHMENTS>;
 
@@ -463,10 +471,26 @@ using ActiveTextureTypeArray    = ActiveTextureArray<TextureType>;
 
 template <typename T>
 using UniformBuffersArray = std::array<T, IMPLEMENTATION_MAX_UNIFORM_BUFFER_BINDINGS>;
+template <typename T>
+using StorageBuffersArray = std::array<T, IMPLEMENTATION_MAX_SHADER_STORAGE_BUFFER_BINDINGS>;
 
 using ImageUnitMask = angle::BitSet<IMPLEMENTATION_MAX_IMAGE_UNITS>;
 
 using SupportedSampleSet = std::set<GLuint>;
+
+template <typename T>
+using TransformFeedbackBuffersArray =
+    std::array<T, gl::IMPLEMENTATION_MAX_TRANSFORM_FEEDBACK_BUFFERS>;
+
+constexpr size_t kBarrierVectorDefaultSize = 16;
+using BufferBarrierVector                  = angle::FastVector<Buffer *, kBarrierVectorDefaultSize>;
+
+struct TextureBarrier
+{
+    Texture *texture;
+    GLenum layout;
+};
+using TextureBarrierVector = angle::FastVector<TextureBarrier, kBarrierVectorDefaultSize>;
 
 // OffsetBindingPointer.getSize() returns the size specified by the user, which may be larger than
 // the size of the bound buffer. This function reduces the returned size to fit the bound buffer if
@@ -527,7 +551,7 @@ inline DestT *SafeGetImplAs(SrcT *src)
 
 }  // namespace rx
 
-#include "angletypes.inl"
+#include "angletypes.inc"
 
 namespace angle
 {

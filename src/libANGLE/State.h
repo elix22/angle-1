@@ -40,6 +40,7 @@ class ProgramPipelineManager;
 class Query;
 class RenderbufferManager;
 class SamplerManager;
+class SemaphoreManager;
 class ShaderProgramManager;
 class SyncManager;
 class TextureManager;
@@ -57,6 +58,7 @@ class State : angle::NonCopyable
     State(ContextID contextIn,
           const State *shareContextState,
           TextureManager *shareTextures,
+          const EGLenum clientType,
           const Version &clientVersion,
           bool debug,
           bool bindGeneratesResource,
@@ -70,6 +72,7 @@ class State : angle::NonCopyable
 
     // Getters
     ContextID getContextID() const { return mContext; }
+    EGLenum getClientType() const { return mClientType; }
     GLint getClientMajorVersion() const { return mClientVersion.major; }
     GLint getClientMinorVersion() const { return mClientVersion.minor; }
     const Version &getClientVersion() const { return mClientVersion; }
@@ -231,6 +234,8 @@ class State : angle::NonCopyable
     void detachTexture(const Context *context, const TextureMap &zeroTextures, GLuint texture);
     void initializeZeroTextures(const Context *context, const TextureMap &zeroTextures);
 
+    void invalidateTexture(TextureType type);
+
     // Sampler object binding manipulation
     void setSamplerBinding(const Context *context, GLuint textureUnit, Sampler *sampler);
     GLuint getSamplerId(GLuint textureUnit) const
@@ -295,6 +300,11 @@ class State : angle::NonCopyable
     void setTransformFeedbackBinding(const Context *context, TransformFeedback *transformFeedback);
     TransformFeedback *getCurrentTransformFeedback() const { return mTransformFeedback.get(); }
 
+    ANGLE_INLINE bool isTransformFeedbackActive() const
+    {
+        TransformFeedback *curTransformFeedback = mTransformFeedback.get();
+        return curTransformFeedback && curTransformFeedback->isActive();
+    }
     ANGLE_INLINE bool isTransformFeedbackActiveUnpaused() const
     {
         TransformFeedback *curTransformFeedback = mTransformFeedback.get();
@@ -483,6 +493,11 @@ class State : angle::NonCopyable
 
     enum DirtyBitType
     {
+        // Note: process draw framebuffer binding first, so that other dirty bits whose effect
+        // depend on the current draw framebuffer are not processed while the old framebuffer is
+        // still bound.
+        DIRTY_BIT_DRAW_FRAMEBUFFER_BINDING,
+        DIRTY_BIT_READ_FRAMEBUFFER_BINDING,
         DIRTY_BIT_SCISSOR_TEST_ENABLED,
         DIRTY_BIT_SCISSOR,
         DIRTY_BIT_VIEWPORT,
@@ -525,8 +540,6 @@ class State : angle::NonCopyable
         DIRTY_BIT_DITHER_ENABLED,
         DIRTY_BIT_GENERATE_MIPMAP_HINT,
         DIRTY_BIT_SHADER_DERIVATIVE_HINT,
-        DIRTY_BIT_READ_FRAMEBUFFER_BINDING,
-        DIRTY_BIT_DRAW_FRAMEBUFFER_BINDING,
         DIRTY_BIT_RENDERBUFFER_BINDING,
         DIRTY_BIT_VERTEX_ARRAY_BINDING,
         DIRTY_BIT_DRAW_INDIRECT_BUFFER_BINDING,
@@ -711,6 +724,7 @@ class State : angle::NonCopyable
     // Dispatch table for buffer update functions.
     static const angle::PackedEnumMap<BufferBinding, BufferBindingSetter> kBufferSetters;
 
+    EGLenum mClientType;
     Version mClientVersion;
     ContextID mContext;
 
@@ -731,6 +745,7 @@ class State : angle::NonCopyable
     FramebufferManager *mFramebufferManager;
     ProgramPipelineManager *mProgramPipelineManager;
     MemoryObjectManager *mMemoryObjectManager;
+    SemaphoreManager *mSemaphoreManager;
 
     // Cached values from Context's caps
     GLuint mMaxDrawBuffers;

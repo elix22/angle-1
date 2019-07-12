@@ -50,6 +50,8 @@ enum class CommandID : uint16_t
     DrawIndexedInstanced,
     DrawInstanced,
     EndQuery,
+    ExecutionBarrier,
+    FillBuffer,
     ImageBarrier,
     MemoryBarrier,
     PipelineBarrier,
@@ -220,6 +222,15 @@ struct DispatchParams
 };
 VERIFY_4_BYTE_ALIGNMENT(DispatchParams)
 
+struct FillBufferParams
+{
+    VkBuffer dstBuffer;
+    VkDeviceSize dstOffset;
+    VkDeviceSize size;
+    uint32_t data;
+};
+VERIFY_4_BYTE_ALIGNMENT(FillBufferParams)
+
 struct MemoryBarrierParams
 {
     VkPipelineStageFlags srcStageMask;
@@ -238,6 +249,12 @@ struct PipelineBarrierParams
     uint32_t imageMemoryBarrierCount;
 };
 VERIFY_4_BYTE_ALIGNMENT(PipelineBarrierParams)
+
+struct ExecutionBarrierParams
+{
+    VkPipelineStageFlags stageMask;
+};
+VERIFY_4_BYTE_ALIGNMENT(ExecutionBarrierParams)
 
 struct ImageBarrierParams
 {
@@ -429,6 +446,13 @@ class SecondaryCommandBuffer final : angle::NonCopyable
 
     void endQuery(VkQueryPool queryPool, uint32_t query);
 
+    void executionBarrier(VkPipelineStageFlags stageMask);
+
+    void fillBuffer(const Buffer &dstBuffer,
+                    VkDeviceSize dstOffset,
+                    VkDeviceSize size,
+                    uint32_t data);
+
     void imageBarrier(VkPipelineStageFlags srcStageMask,
                       VkPipelineStageFlags dstStageMask,
                       const VkImageMemoryBarrier *imageMemoryBarrier);
@@ -510,6 +534,7 @@ class SecondaryCommandBuffer final : angle::NonCopyable
     // The SecondaryCommandBuffer is valid if it's been initialized
     bool valid() const { return mAllocator != nullptr; }
 
+    static bool CanKnowIfEmpty() { return true; }
     bool empty() const { return mCommands.size() == 0 || mCommands[0]->id == CommandID::Invalid; }
 
   private:
@@ -862,6 +887,25 @@ ANGLE_INLINE void SecondaryCommandBuffer::endQuery(VkQueryPool queryPool, uint32
     EndQueryParams *paramStruct = initCommand<EndQueryParams>(CommandID::EndQuery);
     paramStruct->queryPool      = queryPool;
     paramStruct->query          = query;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::executionBarrier(VkPipelineStageFlags stageMask)
+{
+    ExecutionBarrierParams *paramStruct =
+        initCommand<ExecutionBarrierParams>(CommandID::ExecutionBarrier);
+    paramStruct->stageMask = stageMask;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::fillBuffer(const Buffer &dstBuffer,
+                                                     VkDeviceSize dstOffset,
+                                                     VkDeviceSize size,
+                                                     uint32_t data)
+{
+    FillBufferParams *paramStruct = initCommand<FillBufferParams>(CommandID::FillBuffer);
+    paramStruct->dstBuffer        = dstBuffer.getHandle();
+    paramStruct->dstOffset        = dstOffset;
+    paramStruct->size             = size;
+    paramStruct->data             = data;
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::imageBarrier(

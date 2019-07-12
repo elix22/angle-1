@@ -141,7 +141,7 @@ CompilerImpl *Context11::createCompiler()
 
 ShaderImpl *Context11::createShader(const gl::ShaderState &data)
 {
-    return new ShaderD3D(data, mRenderer->getWorkarounds(), mRenderer->getNativeExtensions());
+    return new ShaderD3D(data, mRenderer->getFeatures(), mRenderer->getNativeExtensions());
 }
 
 ProgramImpl *Context11::createProgram(const gl::ProgramState &data)
@@ -232,6 +232,12 @@ std::vector<PathImpl *> Context11::createPaths(GLsizei)
 }
 
 MemoryObjectImpl *Context11::createMemoryObject()
+{
+    UNREACHABLE();
+    return nullptr;
+}
+
+SemaphoreImpl *Context11::createSemaphore()
 {
     UNREACHABLE();
     return nullptr;

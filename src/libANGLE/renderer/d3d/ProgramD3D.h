@@ -18,7 +18,7 @@
 #include "libANGLE/renderer/ProgramImpl.h"
 #include "libANGLE/renderer/d3d/DynamicHLSL.h"
 #include "libANGLE/renderer/d3d/RendererD3D.h"
-#include "platform/WorkaroundsD3D.h"
+#include "platform/FeaturesD3D.h"
 
 namespace rx
 {
@@ -183,6 +183,7 @@ class ProgramD3D : public ProgramImpl
     bool usesPointSpriteEmulation() const;
     bool usesGeometryShader(const gl::State &state, gl::PrimitiveMode drawMode) const;
     bool usesGeometryShaderForPointSpriteEmulation() const;
+    bool usesGetDimensionsIgnoresBaseLevel() const;
     bool usesInstancedPointSpriteEmulation() const;
 
     std::unique_ptr<LinkEvent> load(const gl::Context *context,
@@ -479,7 +480,7 @@ class ProgramD3D : public ProgramImpl
     std::unique_ptr<LinkEvent> compileComputeExecutable(const gl::Context *context,
                                                         gl::InfoLog &infoLog);
 
-    angle::Result loadBinaryShaderExecutables(const gl::Context *context,
+    angle::Result loadBinaryShaderExecutables(d3d::Context *contextD3D,
                                               gl::BinaryInputStream *stream,
                                               gl::InfoLog &infoLog);
 

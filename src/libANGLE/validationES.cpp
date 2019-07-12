@@ -22,8 +22,8 @@
 #include "libANGLE/formatutils.h"
 #include "libANGLE/queryconversions.h"
 #include "libANGLE/queryutils.h"
-#include "libANGLE/validationES2_autogen.h"
-#include "libANGLE/validationES3_autogen.h"
+#include "libANGLE/validationES2.h"
+#include "libANGLE/validationES3.h"
 
 #include "common/mathutil.h"
 #include "common/utilities.h"
@@ -189,7 +189,9 @@ bool ValidReadPixelsFormatType(Context *context,
 }
 
 template <typename ParamType>
-bool ValidateTextureWrapModeValue(Context *context, ParamType *params, bool restrictedWrapModes)
+bool ValidateTextureWrapModeValue(Context *context,
+                                  const ParamType *params,
+                                  bool restrictedWrapModes)
 {
     switch (ConvertToGLenum(params[0]))
     {
@@ -223,7 +225,9 @@ bool ValidateTextureWrapModeValue(Context *context, ParamType *params, bool rest
 }
 
 template <typename ParamType>
-bool ValidateTextureMinFilterValue(Context *context, ParamType *params, bool restrictedMinFilter)
+bool ValidateTextureMinFilterValue(Context *context,
+                                   const ParamType *params,
+                                   bool restrictedMinFilter)
 {
     switch (ConvertToGLenum(params[0]))
     {
@@ -252,7 +256,7 @@ bool ValidateTextureMinFilterValue(Context *context, ParamType *params, bool res
 }
 
 template <typename ParamType>
-bool ValidateTextureMagFilterValue(Context *context, ParamType *params)
+bool ValidateTextureMagFilterValue(Context *context, const ParamType *params)
 {
     switch (ConvertToGLenum(params[0]))
     {
@@ -269,7 +273,7 @@ bool ValidateTextureMagFilterValue(Context *context, ParamType *params)
 }
 
 template <typename ParamType>
-bool ValidateTextureCompareModeValue(Context *context, ParamType *params)
+bool ValidateTextureCompareModeValue(Context *context, const ParamType *params)
 {
     // Acceptable mode parameters from GLES 3.0.2 spec, table 3.17
     switch (ConvertToGLenum(params[0]))
@@ -287,7 +291,7 @@ bool ValidateTextureCompareModeValue(Context *context, ParamType *params)
 }
 
 template <typename ParamType>
-bool ValidateTextureCompareFuncValue(Context *context, ParamType *params)
+bool ValidateTextureCompareFuncValue(Context *context, const ParamType *params)
 {
     // Acceptable function parameters from GLES 3.0.2 spec, table 3.17
     switch (ConvertToGLenum(params[0]))
@@ -311,7 +315,7 @@ bool ValidateTextureCompareFuncValue(Context *context, ParamType *params)
 }
 
 template <typename ParamType>
-bool ValidateTextureSRGBDecodeValue(Context *context, ParamType *params)
+bool ValidateTextureSRGBDecodeValue(Context *context, const ParamType *params)
 {
     if (!context->getExtensions().textureSRGBDecode)
     {
@@ -498,6 +502,9 @@ bool ValidTextureTarget(const Context *context, TextureType type)
             return context->getExtensions().textureRectangle;
 
         case TextureType::_3D:
+            return ((context->getClientMajorVersion() >= 3) ||
+                    context->getExtensions().texture3DOES);
+
         case TextureType::_2DArray:
             return (context->getClientMajorVersion() >= 3);
 
@@ -548,6 +555,12 @@ bool ValidTextureExternalTarget(const Context *context, TextureType target)
     return (target == TextureType::External) &&
            (context->getExtensions().eglImageExternal ||
             context->getExtensions().eglStreamConsumerExternal);
+}
+
+bool ValidTextureExternalTarget(const Context *context, TextureTarget target)
+{
+    return (target == TextureTarget::External) &&
+           ValidTextureExternalTarget(context, TextureType::External);
 }
 
 // This function differs from ValidTextureTarget in that the target must be
@@ -1316,7 +1329,7 @@ bool ValidateBlitFramebufferParameters(Context *context,
 
     if (mask & GL_COLOR_BUFFER_BIT)
     {
-        const FramebufferAttachment *readColorBuffer = readFramebuffer->getReadColorbuffer();
+        const FramebufferAttachment *readColorBuffer = readFramebuffer->getReadColorAttachment();
         const Extensions &extensions                 = context->getExtensions();
 
         if (readColorBuffer)
@@ -2269,7 +2282,7 @@ bool ValidateStateQuery(Context *context, GLenum pname, GLenum *nativeType, unsi
                 return false;
             }
 
-            const FramebufferAttachment *attachment = readFramebuffer->getReadColorbuffer();
+            const FramebufferAttachment *attachment = readFramebuffer->getReadColorAttachment();
             if (!attachment)
             {
                 context->validationError(GL_INVALID_OPERATION, kReadBufferNotAttached);
@@ -2466,7 +2479,7 @@ bool ValidateCopyTexImageParametersBase(Context *context,
     // In OpenGL ES it is undefined what happens when an operation tries to read from a missing
     // attachment and WebGL defines it to be an error. We do the check unconditionally as the
     // situation is an application error that would lead to a crash in ANGLE.
-    const FramebufferAttachment *source = readFramebuffer->getReadColorbuffer();
+    const FramebufferAttachment *source = readFramebuffer->getReadColorAttachment();
     if (source == nullptr)
     {
         context->validationError(GL_INVALID_OPERATION, kMissingReadAttachment);
@@ -2708,9 +2721,7 @@ const char *ValidateDrawStates(Context *context)
                 return kMultiviewMismatch;
             }
 
-            const TransformFeedback *transformFeedbackObject = state.getCurrentTransformFeedback();
-            if (transformFeedbackObject != nullptr && transformFeedbackObject->isActive() &&
-                !transformFeedbackObject->isPaused() && framebufferNumViews > 1)
+            if (state.isTransformFeedbackActiveUnpaused() && framebufferNumViews > 1)
             {
                 return kMultiviewTransformFeedback;
             }
@@ -2760,7 +2771,7 @@ const char *ValidateDrawStates(Context *context)
             }
 
             const TransformFeedback *transformFeedbackObject = state.getCurrentTransformFeedback();
-            if (transformFeedbackObject != nullptr && transformFeedbackObject->isActive() &&
+            if (state.isTransformFeedbackActive() &&
                 transformFeedbackObject->buffersBoundForOtherUse())
             {
                 return kTransformFeedbackBufferDoubleBound;
@@ -2809,8 +2820,7 @@ void RecordDrawModeError(Context *context, PrimitiveMode mode)
 {
     const State &state                      = context->getState();
     TransformFeedback *curTransformFeedback = state.getCurrentTransformFeedback();
-    if (curTransformFeedback && curTransformFeedback->isActive() &&
-        !curTransformFeedback->isPaused())
+    if (state.isTransformFeedbackActiveUnpaused())
     {
         if (!ValidateTransformFeedbackPrimitiveMode(context,
                                                     curTransformFeedback->getPrimitiveMode(), mode))
@@ -5257,6 +5267,14 @@ bool ValidateGetTexParameterBase(Context *context,
             }
             break;
 
+        case GL_TEXTURE_NATIVE_ID_ANGLE:
+            if (!context->getExtensions().textureExternalUpdateANGLE)
+            {
+                context->validationError(GL_INVALID_ENUM, kExtensionNotEnabled);
+                return false;
+            }
+            break;
+
         default:
             context->validationError(GL_INVALID_ENUM, kEnumNotSupported);
             return false;
@@ -5417,7 +5435,7 @@ bool ValidateReadPixelsBase(Context *context,
         return false;
     }
 
-    const FramebufferAttachment *readBuffer = framebuffer->getReadColorbuffer();
+    const FramebufferAttachment *readBuffer = framebuffer->getReadColorAttachment();
     // WebGL 1.0 [Section 6.26] Reading From a Missing Attachment
     // In OpenGL ES it is undefined what happens when an operation tries to read from a missing
     // attachment and WebGL defines it to be an error. We do the check unconditionnaly as the
@@ -5642,7 +5660,8 @@ bool ValidateTexParameterBase(Context *context,
         case GL_TEXTURE_COMPARE_FUNC:
         case GL_TEXTURE_MIN_LOD:
         case GL_TEXTURE_MAX_LOD:
-            if (context->getClientMajorVersion() < 3)
+            if (context->getClientMajorVersion() < 3 &&
+                !(pname == GL_TEXTURE_WRAP_R && context->getExtensions().texture3DOES))
             {
                 context->validationError(GL_INVALID_ENUM, kES3Required);
                 return false;
@@ -5985,7 +6004,7 @@ bool ValidateSamplerParameterBase(Context *context,
                                   GLenum pname,
                                   GLsizei bufSize,
                                   bool vectorParams,
-                                  ParamType *params)
+                                  const ParamType *params)
 {
     if (context->getClientMajorVersion() < 3)
     {
@@ -6088,8 +6107,13 @@ bool ValidateSamplerParameterBase(Context *context,
     return true;
 }
 
-template bool ValidateSamplerParameterBase(Context *, GLuint, GLenum, GLsizei, bool, GLfloat *);
-template bool ValidateSamplerParameterBase(Context *, GLuint, GLenum, GLsizei, bool, GLint *);
+template bool ValidateSamplerParameterBase(Context *,
+                                           GLuint,
+                                           GLenum,
+                                           GLsizei,
+                                           bool,
+                                           const GLfloat *);
+template bool ValidateSamplerParameterBase(Context *, GLuint, GLenum, GLsizei, bool, const GLint *);
 template bool ValidateSamplerParameterBase(Context *,
                                            GLuint,
                                            GLenum,
@@ -6498,6 +6522,69 @@ bool ValidateLoseContextCHROMIUM(Context *context,
 
         default:
             context->validationError(GL_INVALID_ENUM, kInvalidResetStatus);
+    }
+
+    return true;
+}
+
+// GL_ANGLE_texture_storage_external
+bool ValidateTexImage2DExternalANGLE(Context *context,
+                                     TextureTarget target,
+                                     GLint level,
+                                     GLint internalformat,
+                                     GLsizei width,
+                                     GLsizei height,
+                                     GLint border,
+                                     GLenum format,
+                                     GLenum type)
+{
+    if (!context->getExtensions().textureExternalUpdateANGLE)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    if (!ValidTexture2DDestinationTarget(context, target) &&
+        !ValidTextureExternalTarget(context, target))
+    {
+        context->validationError(GL_INVALID_ENUM, kInvalidTextureTarget);
+        return false;
+    }
+
+    if (context->getClientMajorVersion() <= 2)
+    {
+        if (!ValidateES2TexImageParametersBase(context, target, level, internalformat, false, false,
+                                               0, 0, width, height, border, format, type, -1,
+                                               nullptr))
+        {
+            return false;
+        }
+    }
+    else
+    {
+        if (!ValidateES3TexImageParametersBase(context, target, level, internalformat, false, false,
+                                               0, 0, 0, width, height, 1, border, format, type, -1,
+                                               nullptr))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ValidateInvalidateTextureANGLE(Context *context, TextureType target)
+{
+    if (!context->getExtensions().textureExternalUpdateANGLE)
+    {
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
+        return false;
+    }
+
+    if (!ValidTextureTarget(context, target) && !ValidTextureExternalTarget(context, target))
+    {
+        context->validationError(GL_INVALID_ENUM, kInvalidTextureTarget);
+        return false;
     }
 
     return true;

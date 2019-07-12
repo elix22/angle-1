@@ -112,7 +112,8 @@ egl::Error ImageVk::initialize(const egl::Display *display)
         }
 
         // Make sure a staging buffer is ready to use to upload data
-        mImage->initStagingBuffer(renderer, mImage->getFormat());
+        mImage->initStagingBuffer(renderer, mImage->getFormat(), vk::kStagingBufferFlags,
+                                  vk::kStagingBufferSize);
 
         mOwnsImage = false;
 
@@ -155,9 +156,9 @@ angle::Result ImageVk::orphan(const gl::Context *context, egl::ImageSibling *sib
     ContextVk *contextVk = vk::GetImpl(mContext);
 
     // Flush the context to make sure the fence has been submitted.
-    ANGLE_TRY(contextVk->flushImpl());
+    ANGLE_TRY(contextVk->flushImpl(nullptr));
 
-    vk::Shared<vk::Fence> fence = contextVk->getRenderer()->getLastSubmittedFence();
+    vk::Shared<vk::Fence> fence = contextVk->getLastSubmittedFence();
     if (fence.isReferenced())
     {
         mImageLastUseFences.push_back(std::move(fence));

@@ -21,6 +21,7 @@ namespace gl
 class ErrorSet;
 class MemoryProgramCache;
 class Path;
+class Semaphore;
 struct Workarounds;
 }  // namespace gl
 
@@ -143,6 +144,9 @@ class ContextImpl : public GLImplFactory
     // KHR_parallel_shader_compile
     virtual void setMaxShaderCompilerThreads(GLuint count) {}
 
+    // GL_ANGLE_texture_storage_external
+    virtual void invalidateTexture(gl::TextureType target);
+
     // State sync with dirty bits.
     virtual angle::Result syncState(const gl::Context *context,
                                     const gl::State::DirtyBits &dirtyBits,
@@ -161,8 +165,6 @@ class ContextImpl : public GLImplFactory
     virtual const gl::TextureCapsMap &getNativeTextureCaps() const = 0;
     virtual const gl::Extensions &getNativeExtensions() const      = 0;
     virtual const gl::Limitations &getNativeLimitations() const    = 0;
-
-    virtual void applyNativeWorkarounds(gl::Workarounds *workarounds) const {}
 
     virtual angle::Result dispatchCompute(const gl::Context *context,
                                           GLuint numGroupsX,

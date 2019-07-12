@@ -550,6 +550,18 @@ bool ValidateGetQueryObjectui64vRobustANGLE(Context *context,
                                             GLsizei *length,
                                             GLuint64 *params);
 
+// GL_ANGLE_texture_external_update
+bool ValidateTexImage2DExternalANGLE(Context *context,
+                                     TextureTarget targetPacked,
+                                     GLint level,
+                                     GLint internalformat,
+                                     GLsizei width,
+                                     GLsizei height,
+                                     GLint border,
+                                     GLenum format,
+                                     GLenum type);
+bool ValidateInvalidateTextureANGLE(Context *context, TextureType targetPacked);
+
 // GL_ANGLE_texture_multisample
 bool ValidateTexStorage2DMultisampleANGLE(Context *context,
                                           TextureType targetPacked,
@@ -1118,6 +1130,70 @@ bool ValidatePointSizePointerOES(Context *context,
 
 // GL_OES_query_matrix
 bool ValidateQueryMatrixxOES(Context *context, GLfixed *mantissa, GLint *exponent);
+
+// GL_OES_texture_3D
+bool ValidateCompressedTexImage3DOES(Context *context,
+                                     TextureTarget targetPacked,
+                                     GLint level,
+                                     GLenum internalformat,
+                                     GLsizei width,
+                                     GLsizei height,
+                                     GLsizei depth,
+                                     GLint border,
+                                     GLsizei imageSize,
+                                     const void *data);
+bool ValidateCompressedTexSubImage3DOES(Context *context,
+                                        TextureTarget targetPacked,
+                                        GLint level,
+                                        GLint xoffset,
+                                        GLint yoffset,
+                                        GLint zoffset,
+                                        GLsizei width,
+                                        GLsizei height,
+                                        GLsizei depth,
+                                        GLenum format,
+                                        GLsizei imageSize,
+                                        const void *data);
+bool ValidateCopyTexSubImage3DOES(Context *context,
+                                  TextureTarget targetPacked,
+                                  GLint level,
+                                  GLint xoffset,
+                                  GLint yoffset,
+                                  GLint zoffset,
+                                  GLint x,
+                                  GLint y,
+                                  GLsizei width,
+                                  GLsizei height);
+bool ValidateFramebufferTexture3DOES(Context *context,
+                                     GLenum target,
+                                     GLenum attachment,
+                                     TextureTarget textargetPacked,
+                                     GLuint texture,
+                                     GLint level,
+                                     GLint zoffset);
+bool ValidateTexImage3DOES(Context *context,
+                           TextureTarget targetPacked,
+                           GLint level,
+                           GLenum internalformat,
+                           GLsizei width,
+                           GLsizei height,
+                           GLsizei depth,
+                           GLint border,
+                           GLenum format,
+                           GLenum type,
+                           const void *pixels);
+bool ValidateTexSubImage3DOES(Context *context,
+                              TextureTarget targetPacked,
+                              GLint level,
+                              GLint xoffset,
+                              GLint yoffset,
+                              GLint zoffset,
+                              GLsizei width,
+                              GLsizei height,
+                              GLsizei depth,
+                              GLenum format,
+                              GLenum type,
+                              const void *pixels);
 
 // GL_OES_texture_border_clamp
 bool ValidateGetSamplerParameterIivOES(Context *context,

@@ -42,6 +42,7 @@ bool ValidTextureTarget(const Context *context, TextureType type);
 bool ValidTexture2DTarget(const Context *context, TextureType type);
 bool ValidTexture3DTarget(const Context *context, TextureType target);
 bool ValidTextureExternalTarget(const Context *context, TextureType target);
+bool ValidTextureExternalTarget(const Context *context, TextureTarget target);
 bool ValidTexture2DDestinationTarget(const Context *context, TextureTarget target);
 bool ValidTexture3DDestinationTarget(const Context *context, TextureTarget target);
 bool ValidTexLevelDestinationTarget(const Context *context, TextureType type);
@@ -583,7 +584,7 @@ bool ValidateSamplerParameterBase(Context *context,
                                   GLenum pname,
                                   GLsizei bufSize,
                                   bool vectorParams,
-                                  ParamType *params);
+                                  const ParamType *params);
 
 bool ValidateGetInternalFormativBase(Context *context,
                                      GLenum target,

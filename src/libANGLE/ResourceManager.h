@@ -37,6 +37,7 @@ class ProgramPipeline;
 class Renderbuffer;
 class Sampler;
 class Shader;
+class Semaphore;
 class Texture;
 
 template <typename HandleAllocatorType>
@@ -174,7 +175,7 @@ class TextureManager : public TypedResourceManager<Texture, HandleAllocator, Tex
         return mObjectMap.query(handle);
     }
 
-    void signalAllTexturesDirty(const Context *context) const;
+    void signalAllTexturesDirty() const;
 
     ANGLE_INLINE Texture *checkTextureAllocation(rx::GLImplFactory *factory,
                                                  GLuint handle,
@@ -268,7 +269,7 @@ class FramebufferManager
     Framebuffer *getFramebuffer(GLuint handle) const;
     void setDefaultFramebuffer(Framebuffer *framebuffer);
 
-    void invalidateFramebufferComplenessCache(const Context *context) const;
+    void invalidateFramebufferComplenessCache() const;
 
     Framebuffer *checkFramebufferAllocation(rx::GLImplFactory *factory,
                                             const Caps &caps,
@@ -321,6 +322,24 @@ class MemoryObjectManager : public ResourceManagerBase<HandleAllocator>
     void reset(const Context *context) override;
 
     ResourceMap<MemoryObject> mMemoryObjects;
+};
+
+class SemaphoreManager : public ResourceManagerBase<HandleAllocator>
+{
+  public:
+    SemaphoreManager();
+
+    GLuint createSemaphore(rx::GLImplFactory *factory);
+    void deleteSemaphore(const Context *context, GLuint handle);
+    Semaphore *getSemaphore(GLuint handle) const;
+
+  protected:
+    ~SemaphoreManager() override;
+
+  private:
+    void reset(const Context *context) override;
+
+    ResourceMap<Semaphore> mSemaphores;
 };
 
 }  // namespace gl

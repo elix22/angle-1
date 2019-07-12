@@ -415,6 +415,32 @@ angle::Result InitShaderAndSerial(Context *context,
     return angle::Result::Continue;
 }
 
+gl::TextureType Get2DTextureType(uint32_t layerCount, GLint samples)
+{
+    if (layerCount > 1)
+    {
+        if (samples > 1)
+        {
+            return gl::TextureType::_2DMultisampleArray;
+        }
+        else
+        {
+            return gl::TextureType::_2DArray;
+        }
+    }
+    else
+    {
+        if (samples > 1)
+        {
+            return gl::TextureType::_2DMultisample;
+        }
+        else
+        {
+            return gl::TextureType::_2D;
+        }
+    }
+}
+
 GarbageObjectBase::GarbageObjectBase() : mHandleType(HandleType::Invalid), mHandle(VK_NULL_HANDLE)
 {}
 
@@ -522,6 +548,9 @@ PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT = nullptr;
 // VK_KHR_get_physical_device_properties2
 PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = nullptr;
 
+// VK_KHR_external_semaphore_fd
+PFN_vkImportSemaphoreFdKHR vkImportSemaphoreFdKHR = nullptr;
+
 #if defined(ANGLE_PLATFORM_FUCHSIA)
 // VK_FUCHSIA_imagepipe_surface
 PFN_vkCreateImagePipeSurfaceFUCHSIA vkCreateImagePipeSurfaceFUCHSIA = nullptr;
@@ -571,6 +600,11 @@ void InitExternalMemoryHardwareBufferANDROIDFunctions(VkInstance instance)
     GET_FUNC(vkGetMemoryAndroidHardwareBufferANDROID);
 }
 #endif
+
+void InitExternalSemaphoreFdFunctions(VkInstance instance)
+{
+    GET_FUNC(vkImportSemaphoreFdKHR);
+}
 
 #undef GET_FUNC
 
@@ -742,6 +776,32 @@ VkComponentSwizzle GetSwizzle(const GLenum swizzle)
     }
 }
 
+VkCompareOp GetCompareOp(const GLenum compareFunc)
+{
+    switch (compareFunc)
+    {
+        case GL_NEVER:
+            return VK_COMPARE_OP_NEVER;
+        case GL_LESS:
+            return VK_COMPARE_OP_LESS;
+        case GL_EQUAL:
+            return VK_COMPARE_OP_EQUAL;
+        case GL_LEQUAL:
+            return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case GL_GREATER:
+            return VK_COMPARE_OP_GREATER;
+        case GL_NOTEQUAL:
+            return VK_COMPARE_OP_NOT_EQUAL;
+        case GL_GEQUAL:
+            return VK_COMPARE_OP_GREATER_OR_EQUAL;
+        case GL_ALWAYS:
+            return VK_COMPARE_OP_ALWAYS;
+        default:
+            UNREACHABLE();
+            return VK_COMPARE_OP_ALWAYS;
+    }
+}
+
 void GetOffset(const gl::Offset &glOffset, VkOffset3D *vkOffset)
 {
     vkOffset->x = glOffset.x;
@@ -804,6 +864,16 @@ VkColorComponentFlags GetColorComponentFlags(bool red, bool green, bool blue, bo
            (blue ? VK_COLOR_COMPONENT_B_BIT : 0) | (alpha ? VK_COLOR_COMPONENT_A_BIT : 0);
 }
 
+VkShaderStageFlags GetShaderStageFlags(gl::ShaderBitSet activeShaders)
+{
+    VkShaderStageFlags flags = 0;
+    for (const gl::ShaderType shaderType : activeShaders)
+    {
+        flags |= kShaderStageMap[shaderType];
+    }
+    return flags;
+}
+
 void GetViewport(const gl::Rectangle &viewport,
                  float nearPlane,
                  float farPlane,
@@ -836,6 +906,31 @@ void AddSampleCounts(VkSampleCountFlags sampleCounts, gl::SupportedSampleSet *se
     {
         setOut->insert(1 << bit);
     }
+}
+
+GLuint GetMaxSampleCount(VkSampleCountFlags sampleCounts)
+{
+    GLuint maxCount = 0;
+    for (unsigned long bit : angle::BitSet32<32>(sampleCounts))
+    {
+        maxCount = 1 << bit;
+    }
+    return maxCount;
+}
+
+GLuint GetSampleCount(VkSampleCountFlags supportedCounts, GLuint requestedCount)
+{
+    for (unsigned long bit : angle::BitSet32<32>(supportedCounts))
+    {
+        GLuint sampleCount = 1 << bit;
+        if (sampleCount >= requestedCount)
+        {
+            return sampleCount;
+        }
+    }
+
+    UNREACHABLE();
+    return 0;
 }
 }  // namespace vk_gl
 }  // namespace rx

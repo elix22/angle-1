@@ -426,4 +426,14 @@ void DisplayCGL::unreferenceDiscreteGPU()
         mDiscreteGPUPixelFormat = nullptr;
     }
 }
+
+void DisplayCGL::initializeFrontendFeatures(angle::FrontendFeatures *features) const
+{
+    mRenderer->initializeFrontendFeatures(features);
+}
+
+void DisplayCGL::populateFeatureList(angle::FeatureList *features)
+{
+    mRenderer->getFeatures().populateFeatureList(features);
+}
 }

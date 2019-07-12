@@ -369,6 +369,7 @@ bool ValidateES3TexImageParametersBase(Context *context,
     switch (texType)
     {
         case TextureType::_2D:
+        case TextureType::External:
             if (static_cast<GLuint>(width) > (caps.max2DTextureSize >> level) ||
                 static_cast<GLuint>(height) > (caps.max2DTextureSize >> level))
             {
@@ -936,7 +937,7 @@ bool ValidateES3CopyTexImageParametersBase(Context *context,
         return false;
     }
 
-    const FramebufferAttachment *source = framebuffer->getReadColorbuffer();
+    const FramebufferAttachment *source = framebuffer->getReadColorAttachment();
 
     // According to ES 3.x spec, if the internalformat of the texture
     // is RGB9_E5 and copy to such a texture, generate INVALID_OPERATION.
@@ -1517,7 +1518,7 @@ bool ValidateCompressedTexImage3D(Context *context,
                                   GLsizei imageSize,
                                   const void *data)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
         context->validationError(GL_INVALID_OPERATION, kES3Required);
         return false;
@@ -1661,9 +1662,7 @@ static bool ValidateBindBufferCommon(Context *context,
                 return false;
             }
 
-            TransformFeedback *curTransformFeedback =
-                context->getState().getCurrentTransformFeedback();
-            if (curTransformFeedback && curTransformFeedback->isActive())
+            if (context->getState().isTransformFeedbackActive())
             {
                 context->validationError(GL_INVALID_OPERATION, kTransformFeedbackTargetActive);
                 return false;
@@ -2005,7 +2004,7 @@ bool ValidateCopyTexSubImage3D(Context *context,
                                GLsizei width,
                                GLsizei height)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
         context->validationError(GL_INVALID_OPERATION, kES3Required);
         return false;
@@ -2178,9 +2177,9 @@ bool ValidateTexImage3D(Context *context,
                         GLenum type,
                         const void *pixels)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
-        context->validationError(GL_INVALID_OPERATION, kES3Required);
+        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
         return false;
     }
 
@@ -2231,7 +2230,7 @@ bool ValidateTexSubImage3D(Context *context,
                            GLenum type,
                            const void *pixels)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
         context->validationError(GL_INVALID_OPERATION, kES3Required);
         return false;
@@ -2285,7 +2284,7 @@ bool ValidateCompressedTexSubImage3D(Context *context,
                                      GLsizei imageSize,
                                      const void *data)
 {
-    if (context->getClientMajorVersion() < 3)
+    if ((context->getClientMajorVersion() < 3) && !context->getExtensions().texture3DOES)
     {
         context->validationError(GL_INVALID_OPERATION, kES3Required);
         return false;
@@ -3461,10 +3460,7 @@ bool ValidateBindTransformFeedback(Context *context, GLenum target, GLuint id)
         {
             // Cannot bind a transform feedback object if the current one is started and not
             // paused (3.0.2 pg 85 section 2.14.1)
-            TransformFeedback *curTransformFeedback =
-                context->getState().getCurrentTransformFeedback();
-            if (curTransformFeedback && curTransformFeedback->isActive() &&
-                !curTransformFeedback->isPaused())
+            if (context->getState().isTransformFeedbackActiveUnpaused())
             {
                 context->validationError(GL_INVALID_OPERATION, kTransformFeedbackNotPaused);
                 return false;

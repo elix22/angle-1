@@ -19,7 +19,6 @@ class BlitGL;
 class ClearMultiviewGL;
 class FunctionsGL;
 class StateManagerGL;
-struct WorkaroundsGL;
 
 class FramebufferGL : public FramebufferImpl
 {
@@ -77,6 +76,9 @@ class FramebufferGL : public FramebufferImpl
     angle::Result getSamplePosition(const gl::Context *context,
                                     size_t index,
                                     GLfloat *xy) const override;
+
+    // The GL back-end requires a full sync state before we call checkStatus.
+    bool shouldSyncStateBeforeCheckStatus() const override;
 
     bool checkStatus(const gl::Context *context) const override;
 

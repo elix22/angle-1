@@ -143,6 +143,7 @@ class Renderer11 : public RendererD3D
                                  IUnknown *d3dTexture,
                                  EGLint *width,
                                  EGLint *height,
+                                 EGLint *samples,
                                  const angle::Format **angleFormat) const override;
     egl::Error validateShareHandle(const egl::Config *config,
                                    HANDLE shareHandle,
@@ -249,6 +250,10 @@ class Renderer11 : public RendererD3D
 
     // Image operations
     ImageD3D *createImage() override;
+    ExternalImageSiblingImpl *createExternalImageSibling(const gl::Context *context,
+                                                         EGLenum target,
+                                                         EGLClientBuffer buffer,
+                                                         const egl::AttributeMap &attribs) override;
     angle::Result generateMipmap(const gl::Context *context,
                                  ImageD3D *dest,
                                  ImageD3D *source) override;
@@ -505,7 +510,7 @@ class Renderer11 : public RendererD3D
                       gl::Extensions *outExtensions,
                       gl::Limitations *outLimitations) const override;
 
-    void generateWorkarounds(angle::WorkaroundsD3D *workarounds) const override;
+    void initializeFeatures(angle::FeaturesD3D *features) const override;
 
     angle::Result drawLineLoop(const gl::Context *context,
                                GLuint count,

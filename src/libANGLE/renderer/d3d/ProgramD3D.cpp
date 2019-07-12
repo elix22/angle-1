@@ -386,7 +386,7 @@ ProgramD3DMetadata::ProgramD3DMetadata(RendererD3D *renderer,
     : mRendererMajorShaderModel(renderer->getMajorShaderModel()),
       mShaderModelSuffix(renderer->getShaderModelSuffix()),
       mUsesInstancedPointSpriteEmulation(
-          renderer->getWorkarounds().useInstancedPointSpriteEmulation.enabled),
+          renderer->getFeatures().useInstancedPointSpriteEmulation.enabled),
       mUsesViewScale(renderer->presentPathFastEnabled()),
       mCanSelectViewInVertexShader(renderer->canSelectViewInVertexShader()),
       mAttachedShaders(attachedShaders)
@@ -531,6 +531,8 @@ class ProgramD3D::GetExecutableTask : public Closure, public d3d::Context
 
     void popError(d3d::Context *context)
     {
+        ASSERT(mStoredFile);
+        ASSERT(mStoredFunction);
         context->handleResult(mStoredHR, mStoredMessage.c_str(), mStoredFile, mStoredFunction,
                               mStoredLine);
     }
@@ -675,6 +677,11 @@ bool ProgramD3D::usesGeometryShaderForPointSpriteEmulation() const
     return usesPointSpriteEmulation() && !usesInstancedPointSpriteEmulation();
 }
 
+bool ProgramD3D::usesGetDimensionsIgnoresBaseLevel() const
+{
+    return mRenderer->getFeatures().getDimensionsIgnoresBaseLevel.enabled;
+}
+
 bool ProgramD3D::usesGeometryShader(const gl::State &state, const gl::PrimitiveMode drawMode) const
 {
     if (mHasANGLEMultiviewEnabled && !mRenderer->canSelectViewInVertexShader())
@@ -694,7 +701,7 @@ bool ProgramD3D::usesGeometryShader(const gl::State &state, const gl::PrimitiveM
 
 bool ProgramD3D::usesInstancedPointSpriteEmulation() const
 {
-    return mRenderer->getWorkarounds().useInstancedPointSpriteEmulation.enabled;
+    return mRenderer->getFeatures().useInstancedPointSpriteEmulation.enabled;
 }
 
 GLint ProgramD3D::getSamplerMapping(gl::ShaderType type,
@@ -837,16 +844,9 @@ gl::RangeUI ProgramD3D::getUsedImageRange(gl::ShaderType type, bool readonly) co
 class ProgramD3D::LoadBinaryTask : public ProgramD3D::GetExecutableTask
 {
   public:
-    LoadBinaryTask(const gl::Context *context,
-                   ProgramD3D *program,
-                   gl::BinaryInputStream *stream,
-                   gl::InfoLog &infoLog)
-        : ProgramD3D::GetExecutableTask(program),
-          mContext(context),
-          mProgram(program),
-          mInfoLog(infoLog)
+    LoadBinaryTask(ProgramD3D *program, gl::BinaryInputStream *stream, gl::InfoLog &infoLog)
+        : ProgramD3D::GetExecutableTask(program), mProgram(program), mInfoLog(infoLog)
     {
-        ASSERT(mContext);
         ASSERT(mProgram);
         ASSERT(stream);
 
@@ -865,15 +865,14 @@ class ProgramD3D::LoadBinaryTask : public ProgramD3D::GetExecutableTask
         if (!mDataCopySucceeded)
         {
             mInfoLog << "Failed to copy program binary data to local buffer.";
-            return angle::Result::Stop;
+            return angle::Result::Incomplete;
         }
 
         gl::BinaryInputStream stream(mStreamData.data(), mStreamData.size());
-        return mProgram->loadBinaryShaderExecutables(mContext, &stream, mInfoLog);
+        return mProgram->loadBinaryShaderExecutables(this, &stream, mInfoLog);
     }
 
   private:
-    const gl::Context *mContext;
     ProgramD3D *mProgram;
     gl::InfoLog &mInfoLog;
 
@@ -885,11 +884,10 @@ class ProgramD3D::LoadBinaryLinkEvent final : public LinkEvent
 {
   public:
     LoadBinaryLinkEvent(std::shared_ptr<WorkerThreadPool> workerPool,
-                        const gl::Context *context,
                         ProgramD3D *program,
                         gl::BinaryInputStream *stream,
                         gl::InfoLog &infoLog)
-        : mTask(std::make_shared<ProgramD3D::LoadBinaryTask>(context, program, stream, infoLog)),
+        : mTask(std::make_shared<ProgramD3D::LoadBinaryTask>(program, stream, infoLog)),
           mWaitableEvent(angle::WorkerThreadPool::PostWorkerTask(workerPool, mTask))
     {}
 
@@ -1107,19 +1105,17 @@ std::unique_ptr<rx::LinkEvent> ProgramD3D::load(const gl::Context *context,
 
     stream->readString(&mGeometryShaderPreamble);
 
-    return std::make_unique<LoadBinaryLinkEvent>(context->getWorkerThreadPool(), context, this,
-                                                 stream, infoLog);
+    return std::make_unique<LoadBinaryLinkEvent>(context->getWorkerThreadPool(), this, stream,
+                                                 infoLog);
 }
 
-angle::Result ProgramD3D::loadBinaryShaderExecutables(const gl::Context *context,
+angle::Result ProgramD3D::loadBinaryShaderExecutables(d3d::Context *contextD3D,
                                                       gl::BinaryInputStream *stream,
                                                       gl::InfoLog &infoLog)
 {
     const unsigned char *binary = reinterpret_cast<const unsigned char *>(stream->data());
 
     bool separateAttribs = (mState.getTransformFeedbackBufferMode() == GL_SEPARATE_ATTRIBS);
-
-    d3d::Context *contextD3D = GetImplAs<ContextD3D>(context);
 
     const unsigned int vertexShaderCount = stream->readInt<unsigned int>();
     for (unsigned int vertexShaderIndex = 0; vertexShaderIndex < vertexShaderCount;

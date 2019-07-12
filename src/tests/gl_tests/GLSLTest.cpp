@@ -719,11 +719,11 @@ void main() {
     EXPECT_GL_NO_ERROR();
 
     // Clear the texture to 42 to ensure the first test case doesn't accidentally pass
-    GLint val = 42;
-    glClearBufferiv(GL_COLOR, 0, &val);
+    GLint val[4] = {42};
+    glClearBufferiv(GL_COLOR, 0, val);
     int pixel[4];
     glReadPixels(0, 0, 1, 1, GL_RGBA_INTEGER, GL_INT, pixel);
-    EXPECT_EQ(pixel[0], val);
+    EXPECT_EQ(pixel[0], val[0]);
 
     GLVertexIDIntegerTextureDrawArrays_helper(0, 1, GL_NO_ERROR);
     GLVertexIDIntegerTextureDrawArrays_helper(1, 1, GL_NO_ERROR);
@@ -1973,6 +1973,41 @@ TEST_P(GLSLTest, TextureLOD)
     GLuint shader = CompileShader(GL_FRAGMENT_SHADER, kFS);
     ASSERT_NE(0u, shader);
     glDeleteShader(shader);
+}
+
+// HLSL generates extra lod0 variants of functions. There was a bug that incorrectly reworte
+// function calls to use them in vertex shaders.  http://anglebug.com/3471
+TEST_P(GLSLTest, TextureLODRewriteInVertexShader)
+{
+    constexpr char kVS[] = R"(
+  precision highp float;
+  uniform int uni;
+  uniform sampler2D texture;
+
+  vec4 A();
+
+  vec4 B() {
+    vec4 a;
+    for(int r=0; r<14; r++){
+      if (r < uni) return vec4(0.0);
+      a = A();
+    }
+    return a;
+  }
+
+  vec4 A() {
+    return texture2D(texture, vec2(0.0, 0.0));
+  }
+
+  void main() {
+    gl_Position = B();
+  })";
+
+    constexpr char kFS[] = R"(
+void main() { gl_FragColor = vec4(gl_FragCoord.x / 640.0, gl_FragCoord.y / 480.0, 0, 1); }
+)";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
 }
 
 // Test to verify the a shader can have a sampler unused in a vertex shader
@@ -3390,7 +3425,7 @@ TEST_P(GLSLTest_ES3, VaryingStructNotInitializedInVertexShader)
     // > Input of fragment shader 'varStruct' not written by vertex shader
     //
     // http://anglebug.com/3413
-    ANGLE_SKIP_TEST_IF(IsDesktopOpenGL() && (IsOSX() || IsWindows()));
+    ANGLE_SKIP_TEST_IF(IsDesktopOpenGL() && (IsOSX() || (IsWindows() && !IsNVIDIA())));
 
     constexpr char kVS[] =
         "#version 300 es\n"

@@ -143,6 +143,7 @@ class CommandPool final : public WrappedObject<CommandPool, VkCommandPool>
     CommandPool() = default;
 
     void destroy(VkDevice device);
+    VkResult reset(VkDevice device, VkCommandPoolResetFlags flags);
 
     VkResult init(VkDevice device, const VkCommandPoolCreateInfo &createInfo);
 };
@@ -181,6 +182,7 @@ class CommandBuffer : public WrappedObject<CommandBuffer, VkCommandBuffer>
     VkResult init(VkDevice device, const VkCommandBufferAllocateInfo &createInfo);
 
     // There is no way to know if the command buffer contains any commands.
+    static bool CanKnowIfEmpty() { return false; }
     bool empty() const { return false; }
 
     using WrappedObject::operator=;
@@ -284,6 +286,13 @@ class CommandBuffer : public WrappedObject<CommandBuffer, VkCommandBuffer>
     void endQuery(VkQueryPool queryPool, uint32_t query);
     void endRenderPass();
     void executeCommands(uint32_t commandBufferCount, const CommandBuffer *commandBuffers);
+
+    void executionBarrier(VkPipelineStageFlags stageMask);
+
+    void fillBuffer(const Buffer &dstBuffer,
+                    VkDeviceSize dstOffset,
+                    VkDeviceSize size,
+                    uint32_t data);
 
     void imageBarrier(VkPipelineStageFlags srcStageMask,
                       VkPipelineStageFlags dstStageMask,
@@ -525,6 +534,7 @@ class Fence final : public WrappedObject<Fence, VkFence>
     using WrappedObject::operator=;
 
     VkResult init(VkDevice device, const VkFenceCreateInfo &createInfo);
+    VkResult reset(VkDevice device);
     VkResult getStatus(VkDevice device) const;
     VkResult wait(VkDevice device, uint64_t timeout) const;
 };
@@ -553,6 +563,12 @@ ANGLE_INLINE void CommandPool::destroy(VkDevice device)
         vkDestroyCommandPool(device, mHandle, nullptr);
         mHandle = VK_NULL_HANDLE;
     }
+}
+
+ANGLE_INLINE VkResult CommandPool::reset(VkDevice device, VkCommandPoolResetFlags flags)
+{
+    ASSERT(valid());
+    return vkResetCommandPool(device, mHandle, flags);
 }
 
 ANGLE_INLINE VkResult CommandPool::init(VkDevice device, const VkCommandPoolCreateInfo &createInfo)
@@ -634,6 +650,12 @@ ANGLE_INLINE void CommandBuffer::pipelineBarrier(VkPipelineStageFlags srcStageMa
     vkCmdPipelineBarrier(mHandle, srcStageMask, dstStageMask, dependencyFlags, memoryBarrierCount,
                          memoryBarriers, bufferMemoryBarrierCount, bufferMemoryBarriers,
                          imageMemoryBarrierCount, imageMemoryBarriers);
+}
+
+ANGLE_INLINE void CommandBuffer::executionBarrier(VkPipelineStageFlags stageMask)
+{
+    ASSERT(valid());
+    vkCmdPipelineBarrier(mHandle, stageMask, stageMask, 0, 0, nullptr, 0, nullptr, 0, nullptr);
 }
 
 ANGLE_INLINE void CommandBuffer::imageBarrier(VkPipelineStageFlags srcStageMask,
@@ -786,6 +808,15 @@ ANGLE_INLINE void CommandBuffer::executeCommands(uint32_t commandBufferCount,
     vkCmdExecuteCommands(mHandle, commandBufferCount, commandBuffers[0].ptr());
 }
 
+ANGLE_INLINE void CommandBuffer::fillBuffer(const Buffer &dstBuffer,
+                                            VkDeviceSize dstOffset,
+                                            VkDeviceSize size,
+                                            uint32_t data)
+{
+    ASSERT(valid());
+    vkCmdFillBuffer(mHandle, dstBuffer.getHandle(), dstOffset, size, data);
+}
+
 ANGLE_INLINE void CommandBuffer::pushConstants(const PipelineLayout &layout,
                                                VkShaderStageFlags flag,
                                                uint32_t offset,
@@ -832,6 +863,18 @@ ANGLE_INLINE void CommandBuffer::resetQueryPool(VkQueryPool queryPool,
 {
     ASSERT(valid());
     vkCmdResetQueryPool(mHandle, queryPool, firstQuery, queryCount);
+}
+
+ANGLE_INLINE void CommandBuffer::resolveImage(const Image &srcImage,
+                                              VkImageLayout srcImageLayout,
+                                              const Image &dstImage,
+                                              VkImageLayout dstImageLayout,
+                                              uint32_t regionCount,
+                                              const VkImageResolve *regions)
+{
+    ASSERT(valid() && srcImage.valid() && dstImage.valid());
+    vkCmdResolveImage(mHandle, srcImage.getHandle(), srcImageLayout, dstImage.getHandle(),
+                      dstImageLayout, regionCount, regions);
 }
 
 ANGLE_INLINE void CommandBuffer::beginQuery(VkQueryPool queryPool,
@@ -1354,6 +1397,12 @@ ANGLE_INLINE VkResult Fence::init(VkDevice device, const VkFenceCreateInfo &crea
 {
     ASSERT(!valid());
     return vkCreateFence(device, &createInfo, nullptr, &mHandle);
+}
+
+ANGLE_INLINE VkResult Fence::reset(VkDevice device)
+{
+    ASSERT(valid());
+    return vkResetFences(device, 1, &mHandle);
 }
 
 ANGLE_INLINE VkResult Fence::getStatus(VkDevice device) const

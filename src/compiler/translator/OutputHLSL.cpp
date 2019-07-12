@@ -175,15 +175,27 @@ TReferencedBlock::TReferencedBlock(const TInterfaceBlock *aBlock,
 
 bool OutputHLSL::needStructMapping(TIntermTyped *node)
 {
+    ASSERT(node->getBasicType() == EbtStruct);
     for (unsigned int n = 0u; getAncestorNode(n) != nullptr; ++n)
     {
         TIntermNode *ancestor               = getAncestorNode(n);
         const TIntermBinary *ancestorBinary = ancestor->getAsBinaryNode();
-        if (ancestorBinary && ancestorBinary->getLeft()->getBasicType() == EbtStruct)
+        if (ancestorBinary)
         {
             switch (ancestorBinary->getOp())
             {
                 case EOpIndexDirectStruct:
+                {
+                    const TStructure *structure = ancestorBinary->getLeft()->getType().getStruct();
+                    const TIntermConstantUnion *index =
+                        ancestorBinary->getRight()->getAsConstantUnion();
+                    const TField *field = structure->fields()[index->getIConst(0)];
+                    if (field->type()->getStruct() == nullptr)
+                    {
+                        return false;
+                    }
+                    break;
+                }
                 case EOpIndexDirect:
                 case EOpIndexIndirect:
                     break;
@@ -2293,7 +2305,8 @@ bool OutputHLSL::visitAggregate(Visit visit, TIntermAggregate *node)
         {
             TIntermSequence *arguments = node->getSequence();
 
-            bool lod0 = mInsideDiscontinuousLoop || mOutputLod0Function;
+            bool lod0 = (mInsideDiscontinuousLoop || mOutputLod0Function) &&
+                        mShaderType == GL_FRAGMENT_SHADER;
             if (node->getOp() == EOpCallFunctionInAST)
             {
                 if (node->isArray())
